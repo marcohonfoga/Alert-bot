@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Art Studio · base locale</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.min.js"></script>
+<style>
+:root{--ink:#0b0f17;--ink2:#4a5568;--ink3:#8591a3;--line:#d9dfe8;--acc:#00a6c8;--acc2:#6a3df0;--ok:#12a36b;--bad:#d1334a;--warn:#c98a00;--mono:'JetBrains Mono',ui-monospace,monospace;--disp:'Orbitron',system-ui,sans-serif;--ar:9/16}
+body{background:#fff;color:var(--ink);font:14px/1.55 system-ui,sans-serif;min-height:100vh;padding-bottom:90px;background-image:linear-gradient(rgba(0,166,200,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(0,166,200,.07) 1px,transparent 1px),radial-gradient(circle at 88% -8%,rgba(106,61,240,.13),transparent 40%),radial-gradient(circle at 0 32%,rgba(0,166,200,.13),transparent 35%);background-size:32px 32px,32px 32px,auto,auto;background-attachment:fixed}
+.form-control,.form-select,.btn{border-radius:0;font-size:13px}
+.form-control:focus,.form-select:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(0,166,200,.15)}
+#top{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:.8rem;padding:.55rem 1.1rem;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);font:11px var(--mono)}
+#top::after{content:"";position:absolute;bottom:-1px;left:0;height:1px;width:30%;background:linear-gradient(90deg,transparent,var(--acc),transparent);animation:scan 4s linear infinite}
+@keyframes scan{from{left:-30%}to{left:100%}}
+.logo{font:900 .8rem var(--disp);letter-spacing:.2em}.logo i{color:var(--acc);font-style:normal}
+#mode{padding:.15rem .55rem;border:1px solid var(--line);color:var(--ink3);font-weight:700;font-size:.64rem;letter-spacing:.1em}
+#mode.live{border-color:var(--ok);color:var(--ok)}
+#gstat{flex:1;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dot{display:inline-block;width:6px;height:6px;background:var(--ok);border-radius:50%;margin-right:.3rem;animation:blink 1.6s infinite}
+@keyframes blink{50%{opacity:.2}}
+.hero{display:flex;align-items:center;gap:1.2rem;padding:1.4rem 0 .6rem}
+.ring{width:96px;flex:none;animation:rot 40s linear infinite}@keyframes rot{to{transform:rotate(360deg)}}
+h1{font:900 clamp(1.5rem,4vw,2.3rem) var(--disp);letter-spacing:.08em;margin:0;background:linear-gradient(90deg,var(--ink),var(--acc2) 60%,var(--acc));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{font:11px var(--mono);color:var(--ink2);letter-spacing:.06em}
+.hud{position:relative;background:rgba(255,255,255,.88);border:1px solid var(--line);padding:1.3rem 1.1rem 1rem;margin:1.1rem 0;backdrop-filter:blur(6px)}
+.hud::before,.hud::after{content:"";position:absolute;width:14px;height:14px;border:2px solid var(--acc);pointer-events:none}
+.hud::before{top:-1px;left:-1px;border-right:0;border-bottom:0}.hud::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+.tag{position:absolute;top:-9px;left:18px;background:#fff;padding:0 .5rem;font:700 .62rem var(--mono);letter-spacing:.18em;color:var(--acc)}
+.lab{display:block;font:700 .62rem var(--mono);letter-spacing:.14em;color:var(--ink2);text-transform:uppercase;margin:.7rem 0 .3rem}
+.ruler{height:6px;background:repeating-linear-gradient(90deg,var(--line) 0 1px,transparent 1px 8px);margin:.8rem 0 0}
+.drop{position:relative;border:1px dashed var(--ink3);padding:.9rem;text-align:center;cursor:pointer;font:11px var(--mono);color:var(--ink2)}
+.drop:hover,.drop.ov{border-color:var(--acc);background:rgba(0,166,200,.06)}
+.drop input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.pv{position:relative;display:inline-block;max-width:150px;margin-top:.6rem}.pv img{max-width:100%;border:1px solid var(--line);display:block}
+.pv button{position:absolute;top:3px;right:3px;width:22px;height:22px;border:0;background:var(--bad);color:#fff;cursor:pointer}
+.btn-go{width:100%;min-height:50px;margin-top:1rem;border:0;background:var(--ink);color:#fff;font:700 .85rem var(--disp);letter-spacing:.2em;cursor:pointer;clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)}
+.btn-go:hover:not(:disabled){background:var(--acc2)}.btn-go:disabled{opacity:.5;cursor:not-allowed}
+.status{margin-top:.6rem;padding:.5rem .8rem;font:12px var(--mono);background:#f3f5f8;border-left:3px solid var(--line);word-break:break-word}
+.status.ok{border-color:var(--ok);color:var(--ok)}.status.err{border-color:var(--bad);color:var(--bad)}.status.warn{border-color:var(--warn);color:var(--warn)}
+.spin{display:inline-block;width:11px;height:11px;border:2px solid rgba(0,166,200,.25);border-top-color:var(--acc);border-radius:50%;animation:rot .8s linear infinite;vertical-align:middle}
+.step{display:flex;align-items:center;gap:.5rem;padding:.25rem 0;font:12px var(--mono);color:var(--ink3)}
+.step .dot{width:18px;height:18px;margin:0;border:1px solid currentColor;border-radius:0;background:none;animation:none;display:inline-flex;align-items:center;justify-content:center;font-size:.6rem}
+.step.active{color:var(--acc2)}.step.active .dot{background:var(--acc2);color:#fff}
+.step.done{color:var(--ok)}.step.done .dot{background:var(--ok);color:#fff}
+.step.error{color:var(--bad)}.step.error .dot{background:var(--bad);color:#fff}.step.skip{opacity:.4}
+.step .time{margin-left:auto}
+.ana{margin-top:.6rem;padding:.6rem .8rem;background:#f3f5f8;font:11px/1.5 var(--mono);color:var(--ink2);white-space:pre-wrap;max-height:170px;overflow:auto}
+.pr{display:flex;align-items:center;gap:.7rem;margin:.3rem 0;font:11px var(--mono);color:var(--ink2)}
+.pr .k{min-width:64px;text-transform:uppercase;color:var(--ink3)}.pr .v{min-width:90px;text-align:right;font-weight:700;color:var(--ink)}
+.bar{flex:1;height:6px;background:#eceff3;position:relative;overflow:hidden}.bar i{display:block;height:100%;width:0;transition:width .4s;background:linear-gradient(90deg,var(--acc),var(--acc2))}
+.bar.r i{background:var(--acc)}.bar.e i{background:var(--bad)}
+.brow{display:flex;gap:.6rem;align-items:center;padding:.45rem .7rem;border:1px solid var(--line);margin-bottom:.35rem;background:#fff;cursor:pointer;font:12px var(--mono)}
+.brow:hover,.brow.on{border-color:var(--acc)}.brow .bt{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:.9rem}
+.img-cell{position:relative;background:#fff;border:1px solid var(--line);padding:.6rem;display:flex;flex-direction:column;gap:.4rem}
+.img-cell::before{content:"";position:absolute;top:-1px;right:-1px;width:10px;height:10px;border:2px solid var(--acc);border-left:0;border-bottom:0}
+.ic-h{display:flex;align-items:center;gap:.4rem}.ic-n{flex:1;min-width:0;font:700 .85rem var(--disp);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ic-c{font:700 .56rem var(--mono);padding:.12rem .4rem;border:1px solid var(--acc2);color:var(--acc2);text-transform:uppercase}.ic-c.mix{border-color:var(--acc);color:var(--acc)}
+.ic-img,.v-img{aspect-ratio:var(--ar);background:#eceff3;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.ic-img img,.v-img img{width:100%;height:100%;object-fit:cover;cursor:zoom-in;animation:fade .4s}@keyframes fade{from{opacity:0}}
+.ph{font:11px var(--mono);color:var(--ink3);text-align:center;padding:.7rem}.ph.err{color:var(--bad)}
+.ph.shim{width:100%;height:100%;display:flex;align-items:center;justify-content:center;gap:.4rem;background:linear-gradient(110deg,#eceff3 30%,#fff 50%,#eceff3 70%);background-size:200% 100%;animation:shim 1.4s linear infinite}
+@keyframes shim{to{background-position:-200% 0}}
+summary{cursor:pointer;font:700 .68rem var(--mono);color:var(--acc2);padding:.2rem 0}
+.ic-p{width:100%;min-height:90px;margin-top:.3rem;font:11px/1.4 var(--mono)}
+.act{display:flex;gap:.3rem;margin-top:.3rem;flex-wrap:wrap}
+.mini{border:1px solid var(--line);background:#fff;font:.66rem var(--mono);padding:.25rem .55rem;cursor:pointer}.mini:hover{border-color:var(--acc);color:var(--acc)}
+.version{border:1px solid var(--line);padding:.4rem;margin-top:.3rem;background:#f8f9fb}.version .vh{font:10px var(--mono);color:var(--ink3);margin-bottom:.2rem}
+.pager{display:flex;align-items:center;justify-content:center;gap:.3rem;padding:1rem 0;flex-wrap:wrap}
+.pg{min-width:34px;height:34px;border:1px solid var(--line);background:#fff;font:700 .75rem var(--mono);cursor:pointer}
+.pg:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}.pg.on{background:var(--ink);color:#fff;border-color:var(--ink)}.pg:disabled{opacity:.35;cursor:not-allowed}
+.inf{font:11px var(--mono);color:var(--ink3);margin:0 .4rem}
+#lb{position:fixed;inset:0;z-index:300;display:none;align-items:center;justify-content:center;background:rgba(255,255,255,.96);cursor:zoom-out}#lb.on{display:flex}
+#lb img{max-height:92vh;max-width:94vw;border:1px solid var(--line);box-shadow:0 20px 60px rgba(11,15,23,.2)}
+#lbDl{position:absolute;top:14px;right:18px;padding:.35rem .7rem;background:var(--ink);color:#fff;font:11px var(--mono);text-decoration:none}
+#keyBtn{position:fixed;right:16px;bottom:16px;z-index:70;width:50px;height:50px;border:1px solid var(--acc);background:#fff;font-size:1.2rem;cursor:pointer;box-shadow:0 8px 24px rgba(0,166,200,.25)}
+#drawer{position:fixed;right:16px;bottom:78px;z-index:65;width:min(540px,94vw);max-height:70vh;overflow:auto;display:none;background:#fff;border:1px solid var(--acc);padding:1rem;box-shadow:0 16px 50px rgba(11,15,23,.18)}#drawer.on{display:block}
+#keys{min-height:150px;font:12px/1.5 var(--mono)}
+#toast{position:fixed;top:58px;left:50%;transform:translate(-50%,-140px);z-index:200;opacity:0;transition:.3s;background:#fff;border:1px solid var(--line);border-left:3px solid var(--acc);padding:.6rem 1rem;font:12px var(--mono);max-width:92vw}
+#toast.on{transform:translate(-50%,0);opacity:1}#toast.ok{border-left-color:var(--ok)}#toast.err{border-left-color:var(--bad)}
+</style>
+</head>
+<body>
+<header id="top">
+  <span class="logo">ART<i>//</i>STUDIO</span><span id="mode">NON CONFIGURÉ</span>
+  <span id="gstat">Ajoutez vos clés API (🔑)</span>
+  <span><span class="dot"></span>IndexedDB · <b id="usage">0 Mo</b></span><span id="clk"></span>
+</header>
+
+<main class="container-xxl">
+  <div class="hero">
+    <svg class="ring" viewBox="0 0 120 120"><circle cx="60" cy="60" r="56" fill="none" stroke="#00a6c8" stroke-width=".6" stroke-dasharray="2 4"/><circle cx="60" cy="60" r="42" fill="none" stroke="#6a3df0" stroke-width=".9" stroke-dasharray="30 8"/><circle cx="60" cy="60" r="26" fill="none" stroke="#0b0f17" stroke-width=".5"/><path d="M60 2v16M60 102v16M2 60h16M102 60h16" stroke="#00a6c8"/><circle cx="60" cy="60" r="3" fill="#00a6c8"/></svg>
+    <div><h1>ART STUDIO</h1><div class="sub">SYS.04 // 1 PROMPT OU 1 IMAGE → ESSENCE → ARTISTES + MIXES → ŒUVRES ORIGINALES · TOUT RESTE DANS VOTRE NAVIGATEUR</div></div>
+  </div>
+
+  <section class="hud"><span class="tag">01 // ENTRÉE</span>
+    <label class="lab">Prompt / description (optionnel)</label>
+    <textarea id="prompt" class="form-control" rows="3" placeholder="Ex : une femme rousse en manteau noir, regard perçant, assise dans un café parisien sous la pluie…"></textarea>
+    <label class="lab">Image de référence (optionnel)</label>
+    <div class="drop" id="drop"><input type="file" id="imgIn" accept="image/*">📷 Cliquez ou glissez une image</div>
+    <div id="pv"></div>
+    <div class="form-check mt-2"><input class="form-check-input" type="checkbox" id="skip" checked><label class="form-check-label" for="skip" style="font:11px var(--mono)">⚡ Si prompt fourni, ignorer l’analyse d’image (obligatoire sans prompt)</label></div>
+    <div class="row g-2">
+      <div class="col-6 col-md-3"><label class="lab">Artistes célèbres</label><input type="number" id="nF" class="form-control" value="200" min="1" max="500"></div>
+      <div class="col-6 col-md-3"><label class="lab">Mixes</label><input type="number" id="nM" class="form-control" value="200" min="0" max="500"></div>
+      <div class="col-4 col-md-2"><label class="lab">Workers</label><select id="workers" class="form-select"><option>4</option><option>6</option><option selected>8</option><option>12</option><option>16</option></select></div>
+      <div class="col-4 col-md-2"><label class="lab">Ratio</label><select id="ratio" class="form-select"><option value="9:16" selected>9:16</option><option>3:4</option><option>2:3</option><option>1:1</option><option>16:9</option></select></div>
+      <div class="col-4 col-md-2"><label class="lab">Taille</label><select id="size" class="form-select"><option selected>1K</option><option>2K</option></select></div>
+    </div>
+    <button class="btn-go" id="go">LANCER LA GÉNÉRATION</button>
+    <div id="status" class="status">Prêt. Configurez vos clés (🔑 en bas à droite).</div>
+    <div class="mt-2" id="steps">
+      <div class="step" id="s-create"><span class="dot">1</span>Création du batch<span class="time"></span></div>
+      <div class="step" id="s-analyze"><span class="dot">2</span>Extraction de l’essence<span class="time"></span></div>
+      <div class="step" id="s-artists"><span class="dot">3</span>Recherche d’artistes<span class="time"></span></div>
+      <div class="step" id="s-mixes"><span class="dot">4</span>Génération des mixes<span class="time"></span></div>
+      <div class="step" id="s-prompt"><span class="dot">5</span>Prompts prêts<span class="time"></span></div>
+    </div>
+    <div id="ana" class="ana d-none"></div>
+    <div class="d-flex gap-2 flex-wrap mt-3">
+      <button class="btn btn-outline-success d-none" id="pause">⏸ Pause</button>
+      <button class="btn btn-outline-dark d-none" id="resume">▶ Reprendre</button>
+      <button class="btn btn-outline-danger d-none" id="stop">⏹ Stop</button>
+      <button class="btn btn-outline-dark" id="retry">↻ Relancer les erreurs</button>
+      <button class="btn btn-outline-dark" id="reset">🗑 Reset tout</button>
+    </div>
+    <div class="ruler"></div>
+  </section>
+
+  <section class="hud"><span class="tag">02 // TÉLÉMÉTRIE</span>
+    <div class="pr"><span class="k">Images</span><div class="bar"><i id="barD"></i></div><span class="v" id="stD">0 / 0</span></div>
+    <div class="pr"><span class="k">En cours</span><div class="bar r"><i id="barR"></i></div><span class="v" id="stR">0</span></div>
+    <div class="pr"><span class="k">Erreurs</span><div class="bar e"><i id="barE"></i></div><span class="v" id="stE">0</span></div>
+    <div id="eta" class="sub mt-2"></div><div id="binfo" class="sub"></div>
+  </section>
+
+  <details class="hud"><summary class="tag" style="font-size:.62rem">03 // HISTORIQUE</summary><div id="hist" class="mt-2"></div></details>
+
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-4">
+    <h2 class="m-0" style="font:700 1rem var(--disp);letter-spacing:.15em">GALERIE</h2>
+    <div class="d-flex gap-2">
+      <select id="gf" class="form-select form-select-sm"><option value="all">Tous</option><option value="famous">Célèbres</option><option value="mix">Mixes</option><option value="done">Terminés</option><option value="error">Erreurs</option></select>
+      <select id="pp" class="form-select form-select-sm"><option>8</option><option selected>12</option><option>20</option><option>40</option></select>
+    </div>
+  </div>
+  <div id="grid" class="grid mt-3"></div>
+  <div id="empty" class="text-center sub p-4">Aucune image.</div>
+  <div id="pager" class="pager"></div>
+</main>
+
+<div id="lb"><a id="lbDl" href="#" download="art.png" target="_blank" rel="noopener">⬇ Télécharger</a><img id="lbi" alt=""></div>
+<button id="keyBtn" title="Clés API">🔑</button>
+<div id="drawer">
+  <div class="d-flex align-items-center gap-2 mb-1"><b style="font:700 .8rem var(--disp)">CLÉS API AGNÈS</b><span id="ksum" class="sub flex-fill"></span></div>
+  <p class="sub">Une par ligne : <code>sk-xxxx 10</code> (RPM indicatif, défaut 10). Stockées uniquement dans ce navigateur.</p>
+  <textarea id="keys" class="form-control" placeholder="sk-xxxxxxxxxxxxxxxxxxxx 10" spellcheck="false"></textarea>
+  <div class="d-flex gap-2 mt-2 flex-wrap"><button class="btn btn-outline-dark" id="kSave">💾 Enregistrer</button><button class="btn btn-outline-dark" id="kTest">✓ Tester</button><button class="btn btn-outline-dark" id="kDel">🗑 Vider</button><button class="btn btn-outline-dark" id="kClose">Fermer</button></div>
+  <div id="kStat" class="status">Aucune clé</div>
+  <div id="kDiag" class="ana d-none mt-2"></div>
+</div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+const $=i=>document.getElementById(i),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const BASE='https://apihub.agnes-ai.com/v1',TXT='agnes-3.0-flash',TXT2='agnes-2.5-flash',IMG='agnes-image-2.5-flash',THUMB=360,ST=['create','analyze','artists','mixes','prompt'];
+
+/* ---------- Base locale (IndexedDB via Dexie) ---------- */
+const db=new Dexie('artstudio');
+db.version(1).stores({keys:'++id,&key',batches:'++id',artists:'++id,batch_id,&[batch_id+name]',images:'++id,batch_id,artist_id,parent_id,[batch_id+status]',blobs:'id'});
+
+let KEYS=[],CUR=0,IMGF=null,SETUP=false,KI=0,URLS=[],POLL=null;
+const RUN={on:false,paused:false,stop:false,active:0,t0:0,d0:0,bid:0,b:null},VIEW={page:1,per:12,filter:'all',c:null};
+
+function toast(m,t=''){const e=$('toast');e.textContent=m;e.className='on '+t;clearTimeout(e._t);e._t=setTimeout(()=>e.className=t,3200)}
+function setStatus(m,c='',sp){const e=$('status');e.className='status '+c;e.innerHTML=(sp?'<span class="spin"></span> ':'')+esc(m)}
+async function usage(){try{const e=await navigator.storage.estimate();$('usage').textContent=(e.usage/1048576).toFixed(1)+' Mo'}catch(e){}}
+
+/* ---------- API Agnès (appel direct depuis le navigateur) ---------- */
+async function agnes(path,payload,key,timeout){
+  const c=new AbortController(),t=setTimeout(()=>c.abort(),timeout);
+  try{
+    const r=await fetch(BASE+path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+key},body:JSON.stringify(payload),signal:c.signal});
+    const txt=await r.text();let d={};try{d=JSON.parse(txt)}catch(e){}
+    if(!r.ok){const e=new Error('HTTP '+r.status+' : '+(d.error?.message||txt.slice(0,200)));e.code=r.status;throw e}
+    return d;
+  }catch(e){if(e.name==='AbortError')throw new Error('Timeout ('+Math.round(timeout/1000)+'s)');if(e.message==='Failed to fetch')throw new Error('CORS/réseau bloqué — voir diagnostic');throw e}
+  finally{clearTimeout(t)}
+}
+const nextKey=()=>KEYS[KI++%KEYS.length].key;
+async function chat(p,timeout){
+  if(!KEYS.length)throw new Error('Aucune clé');
+  const key=nextKey();p={...p,reasoning_effort:'none',chat_template_kwargs:{enable_thinking:false}};
+  try{return await agnes('/chat/completions',{...p,model:TXT},key,timeout)}
+  catch(e){if(e.code===400||e.code===404)return agnes('/chat/completions',{...p,model:TXT2},key,timeout);throw e}
+}
+
+/* ---------- Prompts ---------- */
+function parseEssence(d){
+  const o={theme:'',composition:'',characters:'',style:'',text:''},S=['THEME','COMPOSITION','CHARACTERS','STYLE','TEXT'];
+  if(d)S.forEach((s,i)=>{const n=S[i+1],m=d.match(new RegExp(s+'\\s*:\\s*([\\s\\S]*?)(?='+(n?'\\n'+n+'\\s*:':'$')+')','i'));if(m)o[s.toLowerCase()]=m[1].replace(/\s+/g,' ').trim()});
+  return o;
+}
+function styleBlock(a){
+  if(a.kind==='famous')return `STRICT STYLE — A FINISHED ORIGINAL ARTWORK, as if ${a.name} personally created this exact subject as a signed piece from their own portfolio.\nMedium and materiality: respect ${a.name}’s actual body of work (oil on canvas, gouache, ink, watercolor, acrylic, engraving, lithography, digital painting — choose the medium this artist historically worked in). Show its characteristic surface traces: brushwork, canvas grain, ink bleed, watercolor blooms, halftone dots.\nAuthentic palette, technique, mark-making, lighting logic and emotional register.\nComposition: subject placement, framing, negative space, depth and focal hierarchy — exactly as ${a.name} would have arranged this scene for a genuine piece.\nResult: looks like a REAL PHYSICAL ARTWORK or museum/gallery piece — NOT an AI render, NOT a photograph, NOT generic digital illustration.`;
+  const m=a.mix_of||[];
+  if(m.length>=3)return `STRICT STYLE — A FINISHED ORIGINAL ARTWORK merging the three distinct visual signatures of ${m[0]}, ${m[1]} and ${m[2]}.\nInterweave their authentic media and materiality (respect each artist’s actual body of work — oil, gouache, ink, watercolor, engraving, digital painting — with their surface traces), their palettes, mark-making, lighting logic and compositional conventions into ONE unified hybrid style.\nEach of the three artists must be visibly present in the result.\nComposition: a well-balanced arrangement as a genuine piece would be composed — subject placement, negative space, depth, focal hierarchy.\nResult: looks like a REAL PHYSICAL ARTWORK — NOT an AI render, NOT a photograph.`;
+  return 'STRICT STYLE — A FINISHED ORIGINAL ARTWORK, highly stylized illustration with strong visual identity, authentic medium and materiality, cinematic lighting, distinctive palette, well-composed like a genuine gallery piece. No photorealism.';
+}
+function buildPrompt(a,user,desc){
+  const e=parseEssence(desc);let b='';
+  if(user)b+='BRIEF: '+user+'\n';
+  if(e.theme)b+='THEME: '+e.theme+'\n';
+  if(e.composition)b+='COMPOSITION: '+e.composition+'\n';
+  if(e.characters&&e.characters.toLowerCase()!=='none')b+='CHARACTERS: '+e.characters+'\n';
+  const t=e.text.trim(),has=t&&!['none','aucun'].includes(t.toLowerCase())&&t.length<=30;
+  b=b.trim()||'Reinterpret the essence of the reference freely.';
+  const ts=has?`\n\nOPTIONAL MINOR TEXT — rendered SMALL, discreet, integrated into the composition as a SECONDARY element only. Never a focal point. Never covering the subject. Never dominant. Max ~5% of the canvas area: "${t}"`:'';
+  const tt=has?'Any text is small and integrated as a minor element — no banners, no overlays, no giant lettering.':'No text, no lettering, no typography.';
+  return styleBlock(a)+`\n\nREFERENCE ESSENCE — REINTERPRET FREELY through the artist’s own vision. Do NOT copy the reference literally. Capture its essence and translate it entirely into the artist’s visual language:\n`+b+ts+`\n\nTECHNICAL: full composition, well-balanced, museum-quality presentation. ${tt} No watermark, no signature, no frame, no border, no UI, no caption.`;
+}
+
+/* ---------- Étapes du pipeline (données) ---------- */
+async function materialize(bid){
+  const b=await db.batches.get(bid);if(!b)return 0;
+  const u=(b.input_text||'').trim(),d=(b.image_desc||'').trim();if(!u&&!d)return 0;
+  const [as,ims]=await Promise.all([db.artists.where('batch_id').equals(bid).toArray(),db.images.where('batch_id').equals(bid).toArray()]);
+  const have=new Set(ims.filter(i=>!i.parent_id).map(i=>i.artist_id));
+  const rows=as.filter(a=>!have.has(a.id)).map(a=>({batch_id:bid,artist_id:a.id,prompt:buildPrompt(a,u,d),parent_id:0,status:'pending',error:null,attempts:0,remote:null,updated_at:Date.now()}));
+  if(rows.length)await db.images.bulkAdd(rows);
+  return rows.length;
+}
+async function analyze(bid,image){
+  const sys=`You extract the CREATIVE ESSENCE of a reference image as a COMPACT brief for artistic reinterpretation.\n\nOutput EXACTLY these 5 sections, plain text, no markdown, no JSON, no preamble:\n\nTHEME: <1 short sentence — core subject and its narrative>\nCOMPOSITION: <1 short sentence — framing, camera angle, focal point, layout>\nCHARACTERS: <compact comma-separated list — role + 2 key traits each; or "none">\nSTYLE: <1 short sentence — mood and atmosphere only>\nTEXT: <ONLY if the text is THEMATICALLY ESSENTIAL to the artwork itself (e.g. a single word carrying the whole concept, a real poster title, a protest sign). Max 15 characters. In ALL other cases write "none".>\n\nRULES:\n- TOTAL under 100 words.\n- Do NOT describe clothing items, exact colors, textures or photographic specifics.\n- NEVER transcribe banners, watermarks, brand names, UI overlays, Instagram/TikTok captions, logos, prices, hashtags, or casual signage. The reference’s text is usually NOT artistic — ignore it.\n- When in doubt about TEXT, output "none".\n- Focus only on what matters for
