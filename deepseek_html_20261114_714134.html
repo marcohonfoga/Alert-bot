@@ -1,0 +1,2103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HAL · Data Analyzer</title>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
+
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --sidebar: #0f0f0f;
+    --panel: #1a1a1a;
+    --panel-2: #222222;
+    --fg: #ececec;
+    --fg-dim: #8a8a8a;
+    --fg-muted: #5a5a5a;
+    --accent: #ff2a2a;
+    --accent-dim: #551010;
+    --accent-hover: #ff4444;
+    --green: #2aff8a;
+    --cyan: #4ad9ff;
+    --yellow: #ffcc4a;
+    --border: #2a2a2a;
+    --border-bright: #3a3a3a;
+    --user-bubble: #2a2a2a;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'SF Pro', 'Inter', system-ui, sans-serif;
+    --mono: 'SF Mono', 'Consolas', 'Courier New', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font);
+    overflow: hidden;
+    font-size: 14px;
+  }
+
+  /* ===== LAYOUT 3 COLONNES ===== */
+  #app {
+    display: grid;
+    grid-template-columns: 260px 1fr 1fr;
+    height: 100vh;
+  }
+
+  /* ===== SIDEBAR (historique) ===== */
+  #sidebar {
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  #sidebar-header {
+    padding: 14px 14px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  #sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fg);
+  }
+  #sidebar-brand .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+  }
+
+  #new-chat-btn {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--fg);
+    padding: 9px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.15s;
+  }
+  #new-chat-btn:hover {
+    background: var(--panel-2);
+    border-color: var(--border-bright);
+  }
+  #new-chat-btn .plus {
+    font-size: 16px;
+    color: var(--accent);
+    font-weight: 400;
+  }
+
+  #search-wrap {
+    position: relative;
+  }
+  #search-input {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--fg);
+    padding: 7px 10px 7px 30px;
+    border-radius: 6px;
+    font-family: var(--font);
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #search-input:focus { border-color: var(--border-bright); }
+  #search-input::placeholder { color: var(--fg-muted); }
+  #search-wrap::before {
+    content: '🔍';
+    position: absolute;
+    left: 9px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 11px;
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
+  #conv-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 8px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  #conv-list::-webkit-scrollbar { width: 6px; }
+  #conv-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .conv-item {
+    padding: 9px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 2px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.12s;
+    position: relative;
+  }
+  .conv-item:hover { background: var(--panel); }
+  .conv-item.active { background: var(--panel-2); }
+  .conv-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 20%; bottom: 20%;
+    width: 2px;
+    background: var(--accent);
+    border-radius: 1px;
+  }
+
+  .conv-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .conv-title {
+    font-size: 12.5px;
+    color: var(--fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-bottom: 2px;
+  }
+  .conv-preview {
+    font-size: 10.5px;
+    color: var(--fg-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .conv-actions {
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .conv-item:hover .conv-actions { opacity: 1; }
+  .conv-actions button {
+    background: transparent;
+    border: none;
+    color: var(--fg-muted);
+    cursor: pointer;
+    padding: 3px 5px;
+    border-radius: 4px;
+    font-size: 11px;
+  }
+  .conv-actions button:hover { background: var(--panel-2); color: var(--fg); }
+  .conv-actions button.danger:hover { color: var(--accent); }
+
+  .conv-title-input {
+    background: var(--bg);
+    border: 1px solid var(--accent);
+    color: var(--fg);
+    font-family: var(--font);
+    font-size: 12.5px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    width: 100%;
+    outline: none;
+  }
+
+  #conv-empty {
+    padding: 20px 12px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--fg-muted);
+    line-height: 1.5;
+  }
+
+  #sidebar-footer {
+    padding: 10px 12px;
+    border-top: 1px solid var(--border);
+    font-size: 10.5px;
+    color: var(--fg-muted);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #clear-all-btn {
+    background: transparent;
+    border: none;
+    color: var(--fg-muted);
+    cursor: pointer;
+    font-size: 10.5px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    font-family: var(--font);
+  }
+  #clear-all-btn:hover { color: var(--accent); background: var(--panel); }
+
+  /* ===== PANNEAU CHAT ===== */
+  #chat-pane {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    border-right: 1px solid var(--border);
+    min-width: 0;
+  }
+
+  #chat-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  #chat-title {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+  #chat-title.editable {
+    cursor: text;
+    padding: 3px 6px;
+    border-radius: 4px;
+  }
+  #chat-title.editable:hover { background: var(--panel); }
+
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 20px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    scroll-behavior: smooth;
+  }
+  #messages::-webkit-scrollbar { width: 8px; }
+  #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .msg-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+    animation: msgIn 0.3s ease-out;
+  }
+  @keyframes msgIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .msg-row.user { flex-direction: row-reverse; }
+
+  .avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .avatar.assistant {
+    background: var(--accent);
+    color: #000;
+    box-shadow: 0 0 0 1px var(--accent-dim);
+  }
+  .avatar.user {
+    background: var(--panel);
+    color: var(--fg-dim);
+    border: 1px solid var(--border);
+  }
+
+  .bubble {
+    max-width: calc(100% - 60px);
+    padding: 12px 16px;
+    border-radius: 12px;
+    line-height: 1.6;
+    font-size: 14px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .msg-row.user .bubble {
+    background: var(--user-bubble);
+    color: var(--fg);
+    border-bottom-right-radius: 4px;
+  }
+  .msg-row.assistant .bubble {
+    background: transparent;
+    color: var(--fg);
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .msg-row.system .bubble {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--cyan);
+    font-size: 12px;
+    font-family: var(--mono);
+    border-radius: 8px;
+    padding: 8px 12px;
+    max-width: 100%;
+  }
+  .msg-row.error .bubble {
+    background: rgba(255, 42, 42, 0.1);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-size: 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    max-width: 100%;
+  }
+
+  .streaming-cursor {
+    display: inline-block;
+    width: 8px;
+    height: 16px;
+    background: var(--accent);
+    margin-left: 2px;
+    vertical-align: middle;
+    animation: cursorBlink 1s infinite;
+  }
+  @keyframes cursorBlink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  .followups {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 12px;
+    margin-left: 40px;
+    max-width: calc(100% - 60px);
+    animation: msgIn 0.4s ease-out 0.15s backwards;
+  }
+  .followup-btn {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--fg-dim);
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-family: var(--font);
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .followup-btn:hover {
+    background: var(--panel-2);
+    border-color: var(--border-bright);
+    color: var(--fg);
+  }
+  .followup-btn::after {
+    content: '→';
+    color: var(--fg-muted);
+    font-size: 14px;
+  }
+  .followup-btn:hover::after { color: var(--accent); }
+
+  #input-container {
+    padding: 16px 20px 20px;
+    flex-shrink: 0;
+  }
+  #file-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  #file-chips:empty { display: none; }
+
+  .file-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px 4px 6px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 11.5px;
+    max-width: 240px;
+    animation: chipIn 0.2s ease-out;
+  }
+  @keyframes chipIn {
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .file-chip .ficon {
+    width: 22px; height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8.5px;
+    font-weight: 700;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .ficon.xls, .ficon.csv { background: rgba(42,255,138,0.15); color: var(--green); }
+  .ficon.doc { background: rgba(74,158,255,0.15); color: #4a9eff; }
+  .ficon.ppt { background: rgba(255,138,42,0.15); color: #ff8a2a; }
+  .ficon.pdf { background: rgba(255,74,74,0.15); color: #ff4a4a; }
+  .ficon.txt { background: var(--panel-2); color: var(--fg-dim); }
+  .ficon.img { background: rgba(180,74,255,0.15); color: #b44aff; }
+  .ficon.db  { background: rgba(255,204,74,0.15); color: var(--yellow); }
+  .ficon.sql { background: rgba(74,217,255,0.15); color: var(--cyan); }
+
+  .file-chip .fname {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 140px;
+  }
+  .file-chip .status { font-size: 10px; }
+  .file-chip .status.parsing { color: var(--accent); }
+  .file-chip .status.ready { color: var(--green); }
+  .file-chip .status.error { color: var(--accent); }
+  .file-chip .status.pending { color: var(--fg-muted); }
+  .file-chip .remove {
+    color: var(--fg-muted);
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: 14px;
+    line-height: 1;
+    margin-left: 2px;
+  }
+  .file-chip .remove:hover { color: var(--fg); }
+
+  #input-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: border-color 0.15s;
+  }
+  #input-box:focus-within { border-color: var(--border-bright); }
+
+  #input-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  #attach-btn {
+    background: transparent;
+    border: none;
+    color: var(--fg-dim);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+  }
+  #attach-btn:hover {
+    background: var(--panel-2);
+    color: var(--fg);
+  }
+  #attach-btn svg { width: 18px; height: 18px; }
+
+  #api-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--fg-dim);
+    font-family: var(--font);
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  #api-btn:hover { color: var(--fg); border-color: var(--border-bright); }
+  #api-btn.configured { color: var(--green); border-color: var(--green); }
+
+  #question {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--fg);
+    font-family: var(--font);
+    font-size: 14px;
+    resize: none;
+    min-height: 24px;
+    max-height: 200px;
+    line-height: 1.5;
+    padding: 2px 4px;
+  }
+  #question::placeholder { color: var(--fg-muted); }
+
+  #input-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  #input-hint {
+    font-size: 11px;
+    color: var(--fg-muted);
+  }
+  #send-btn {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  #send-btn:hover:not(:disabled) { background: var(--accent-hover); }
+  #send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  #send-btn svg { width: 16px; height: 16px; }
+
+  #api-panel {
+    display: none;
+    padding: 10px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 8px;
+  }
+  #api-panel.show { display: block; }
+  #api-keys {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 8px;
+    border-radius: 6px;
+    resize: vertical;
+    min-height: 60px;
+    outline: none;
+  }
+  #api-keys:focus { border-color: var(--border-bright); }
+  #api-hint {
+    font-size: 10.5px;
+    color: var(--fg-muted);
+    margin-top: 6px;
+    line-height: 1.4;
+  }
+
+  #drag-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 10, 10, 0.85);
+    backdrop-filter: blur(8px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    pointer-events: none;
+  }
+  #drag-overlay.show { display: flex; }
+  #drag-overlay .inner {
+    border: 2px dashed var(--accent);
+    border-radius: 16px;
+    padding: 60px 100px;
+    text-align: center;
+    color: var(--accent);
+    font-size: 16px;
+    font-weight: 600;
+    background: rgba(255, 42, 42, 0.05);
+  }
+  #drag-overlay .inner .icon {
+    font-size: 48px;
+    display: block;
+    margin-bottom: 16px;
+  }
+
+  #visual-pane {
+    background: #050505;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  #visual-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(5,5,5,0.9);
+    z-index: 10;
+    flex-shrink: 0;
+  }
+  #visual-header .title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fg-dim);
+  }
+  #visual-header .counter {
+    font-size: 11px;
+    color: var(--fg-muted);
+    font-family: var(--mono);
+  }
+
+  #stage-wrap {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  #stage {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  #status {
+    position: absolute;
+    bottom: 16px;
+    right: 20px;
+    font-size: 10.5px;
+    color: var(--fg-muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(5,5,5,0.9);
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    z-index: 20;
+  }
+  #status .indicator {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--fg-muted);
+  }
+  #status.active .indicator {
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  #analysis-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--panel);
+    border: 1px solid var(--yellow);
+    padding: 16px 24px;
+    border-radius: 10px;
+    font-size: 12px;
+    color: var(--yellow);
+    z-index: 30;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  }
+  #analysis-overlay.show { display: flex; }
+  #analysis-overlay .spinner {
+    width: 12px; height: 12px;
+    border: 2px solid rgba(255,204,74,0.2);
+    border-top-color: var(--yellow);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 1100px) {
+    #app { grid-template-columns: 220px 1fr 1fr; }
+  }
+  @media (max-width: 900px) {
+    #app { grid-template-columns: 1fr; grid-template-rows: auto 1fr 1fr; }
+    #sidebar { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ===== SIDEBAR HISTORIQUE ===== -->
+  <aside id="sidebar">
+    <div id="sidebar-header">
+      <div id="sidebar-brand">
+        <span class="dot"></span> HAL · Historique
+      </div>
+      <button id="new-chat-btn">
+        <span class="plus">+</span> Nouvelle conversation
+      </button>
+      <div id="search-wrap">
+        <input id="search-input" type="text" placeholder="Rechercher...">
+      </div>
+    </div>
+    <div id="conv-list"></div>
+    <div id="sidebar-footer">
+      <span id="conv-count">0 conversation</span>
+      <button id="clear-all-btn">Tout effacer</button>
+    </div>
+  </aside>
+
+  <!-- ===== PANNEAU CHAT ===== -->
+  <div id="chat-pane">
+    <div id="chat-header">
+      <div id="chat-title" class="editable" title="Double-clic pour renommer">Nouvelle conversation</div>
+    </div>
+
+    <div id="messages"></div>
+
+    <div id="input-container">
+      <div id="api-panel">
+        <textarea id="api-keys" placeholder="Clés API, une par ligne :
+Ligne 1 = chat (agnes-2.5-flash)
+Lignes 2-10 = images (agnes-image-2.5-flash)"></textarea>
+        <div id="api-hint">Les clés sont stockées localement dans un cookie (7 jours).</div>
+      </div>
+
+      <div id="file-chips"></div>
+
+      <div id="input-box">
+        <textarea id="question" placeholder="Posez une question sur vos données…" rows="1"></textarea>
+        <div id="input-toolbar">
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button id="attach-btn" title="Joindre des fichiers">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+              </svg>
+            </button>
+            <button id="api-btn" title="Configurer les clés API">API</button>
+          </div>
+          <div id="input-actions">
+            <span id="input-hint">Entrée = envoyer · Maj+Entrée = nouvelle ligne</span>
+            <button id="send-btn" title="Envoyer">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="19" x2="12" y2="5"></line>
+                <polyline points="5 12 12 5 19 12"></polyline>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PANNEAU VISUEL ===== -->
+  <div id="visual-pane">
+    <div id="visual-header">
+      <div class="title">Rendu génératif</div>
+      <div class="counter" id="svg-counter">0 / 9 images</div>
+    </div>
+    <div id="stage-wrap">
+      <svg id="stage" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="redGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#ff4444" stop-opacity="1"/>
+            <stop offset="30%" stop-color="#ff1a1a" stop-opacity="0.95"/>
+            <stop offset="65%" stop-color="#990000" stop-opacity="0.6"/>
+            <stop offset="100%" stop-color="#1a0000" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="ringMetal" cx="50%" cy="30%" r="70%">
+            <stop offset="0%" stop-color="#2a3040"/>
+            <stop offset="50%" stop-color="#0e1218"/>
+            <stop offset="100%" stop-color="#04060a"/>
+          </radialGradient>
+          <filter id="halo" x="-150%" y="-150%" width="400%" height="400%">
+            <feGaussianBlur stdDeviation="16"/>
+          </filter>
+          <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <g id="cells-layer"></g>
+        <g id="hal-eye">
+          <circle id="hal-halo" r="120" fill="url(#redGlow)" filter="url(#halo)" opacity="0.28"/>
+          <circle r="92" fill="url(#ringMetal)" stroke="#141a24" stroke-width="1.5"/>
+          <circle r="74" fill="none" stroke="#1a222e" stroke-width="0.8"/>
+          <circle id="eye-glow" r="48" fill="url(#redGlow)" filter="url(#softGlow)"/>
+          <g id="pupil-group">
+            <circle r="15" fill="#ff2222" opacity="0.95"/>
+            <circle r="5" fill="#ffffff" opacity="0.3"/>
+          </g>
+          <circle id="loader-arc" r="100" fill="none" stroke="#ff1a1a" stroke-width="2"
+                  stroke-dasharray="65 563" stroke-linecap="round" opacity="0" transform="rotate(264)"/>
+        </g>
+        <g id="accent-g"></g>
+      </svg>
+      <div id="status"><span class="indicator"></span><span id="status-text">Prêt</span></div>
+      <div id="analysis-overlay"><span class="spinner"></span><span>Analyse en cours…</span></div>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="file-input" multiple style="display:none"
+       accept=".db,.sqlite,.sqlite3,.sql,.xlsx,.xls,.csv,.docx,.doc,.pptx,.ppt,.pdf,.txt,.md,.json,.png,.jpg,.jpeg,.webp">
+
+<div id="drag-overlay">
+  <div class="inner">
+    <span class="icon">⬇</span>
+    Déposez vos fichiers ici
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   1. CONFIG
+   ============================================================ */
+const API_BASE    = 'https://apihub.agnes-ai.com/v1';
+const MODEL_TEXT  = 'agnes-2.5-flash';
+const MODEL_IMAGE = 'agnes-image-2.5-flash';
+const COOKIE_NAME = 'hal_api_keys';
+const STORAGE_KEY = 'hal_conversations_v1';
+const MAX_FILE_TEXT = 40000;
+
+/* ============================================================
+   1bis. ÉTAT GLOBAL
+   ============================================================ */
+const files = [];
+let conversationHistory = [];   // [{role, content}] pour l'API
+let uiMessages = [];            // [{role, content, id}] pour l'affichage
+let currentConvId = null;
+let allConversations = [];      // [{id, title, messages, files, createdAt, updatedAt}]
+let busy = false;
+let imageCount = 0;
+const cellElements = {};
+const cellFilled = {};
+let sqlModule = null;
+let gridMetrics = { cellW: 0, cellH: 0, offsetX: 0, offsetY: 0, gap: 10 };
+let eyeCenter = { x: 0, y: 0 };
+let mouseX = 0, mouseY = 0;
+let currentPupil = { x: 0, y: 0 };
+let pulseInterval = null;
+let saveTimer = null;
+let dragCounter = 0;
+let currentStreamAbort = null;
+
+const SVG_ROLES = [
+  { name: 'sujet',     prompt: 'The main subject derived from the data analysis. Isolated, recognizable, dark background, red accents.' },
+  { name: 'decor',     prompt: 'Background environment related to the dataset. Atmospheric, minimalist, dark tones.' },
+  { name: 'detail',    prompt: 'A small data point or metric as ornament. Close-up, monochrome with red accent.' },
+  { name: 'ambiance',  prompt: 'Abstract texture evoking data trends. Geometric, atmospheric, dark and red.' },
+  { name: 'objet2',    prompt: 'A secondary chart or object from the analysis. Clean, isolated, minimal.' },
+  { name: 'structure', prompt: 'A geometric structure or schema diagram. Architectural, technical style.' },
+  { name: 'symbole',   prompt: 'A minimalist symbol representing the key insight. 2-3 strokes, red accent.' },
+  { name: 'ornement',  prompt: 'Abstract ornamental pattern related to the data flow. Decorative, flowing.' },
+  { name: 'accent',    prompt: 'A small visual highlight. Minimal, red.' }
+];
+const GRID = [
+  { col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 },
+  { col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 },
+  { col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 },
+];
+const ROLE_CELL = {
+  'sujet': 0, 'decor': 1, 'detail': 2, 'ambiance': 3, 'objet2': 5,
+  'structure': 6, 'symbole': 7, 'ornement': 8, 'accent': -1
+};
+
+/* ============================================================
+   2. DOM
+   ============================================================ */
+const svgStage    = document.getElementById('stage');
+const halEye      = document.getElementById('hal-eye');
+const pupilGroup  = document.getElementById('pupil-group');
+const eyeGlow     = document.getElementById('eye-glow');
+const halo        = document.getElementById('hal-halo');
+const loaderArc   = document.getElementById('loader-arc');
+const cellsLayer  = document.getElementById('cells-layer');
+const messagesEl  = document.getElementById('messages');
+const apiKeysEl   = document.getElementById('api-keys');
+const apiPanel    = document.getElementById('api-panel');
+const apiBtn      = document.getElementById('api-btn');
+const questionEl  = document.getElementById('question');
+const sendBtn     = document.getElementById('send-btn');
+const attachBtn   = document.getElementById('attach-btn');
+const fileInput   = document.getElementById('file-input');
+const fileChips   = document.getElementById('file-chips');
+const statusEl    = document.getElementById('status');
+const statusText  = document.getElementById('status-text');
+const svgCounter  = document.getElementById('svg-counter');
+const dragOverlay = document.getElementById('drag-overlay');
+const overlay     = document.getElementById('analysis-overlay');
+const convListEl  = document.getElementById('conv-list');
+const convCount   = document.getElementById('conv-count');
+const newChatBtn  = document.getElementById('new-chat-btn');
+const clearAllBtn = document.getElementById('clear-all-btn');
+const searchInput = document.getElementById('search-input');
+const chatTitleEl = document.getElementById('chat-title');
+
+/* ============================================================
+   3. STORAGE — sauvegarde/chargement des conversations
+   ============================================================ */
+function loadAllConversations() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    allConversations = raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.warn('Erreur chargement localStorage:', e);
+    allConversations = [];
+  }
+  return allConversations;
+}
+
+function saveAllConversations() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(allConversations));
+  } catch (e) {
+    console.warn('Erreur sauvegarde localStorage:', e);
+  }
+}
+
+function createNewConversation() {
+  const conv = {
+    id: 'conv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+    title: 'Nouvelle conversation',
+    messages: [],
+    files: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  allConversations.unshift(conv);
+  saveAllConversations();
+  return conv;
+}
+
+function loadConversation(convId) {
+  const conv = allConversations.find(c => c.id === convId);
+  if (!conv) return;
+
+  currentConvId = conv.id;
+  conversationHistory = conv.messages.map(m => ({ role: m.role, content: m.content }));
+
+  // Reconstruire l'affichage
+  messagesEl.innerHTML = '';
+  uiMessages = [];
+  conv.messages.forEach(m => {
+    addMessageToUI(m.role, m.content, false);
+  });
+
+  // Titre
+  chatTitleEl.textContent = conv.title;
+
+  // Fichiers : on ne restaure pas le contenu binaire, juste les chips visuelles
+  files.length = 0;
+  (conv.files || []).forEach(f => {
+    files.push({ ...f, file: null });
+  });
+  renderChips();
+
+  // Re-render liste
+  renderConversationList();
+}
+
+function saveCurrentConversation() {
+  if (!currentConvId) return;
+  const conv = allConversations.find(c => c.id === currentConvId);
+  if (!conv) return;
+
+  conv.messages = uiMessages.map(m => ({ role: m.role, content: m.content }));
+  conv.files = files.map(f => ({
+    name: f.name,
+    ext: f.ext,
+    size: f.size,
+    status: f.status,
+    text: f.text || ''
+  }));
+  conv.updatedAt = Date.now();
+  saveAllConversations();
+}
+
+function autoTitleConversation() {
+  if (!currentConvId) return;
+  const conv = allConversations.find(c => c.id === currentConvId);
+  if (!conv) return;
+  if (conv.title !== 'Nouvelle conversation') return;
+
+  const firstUserMsg = uiMessages.find(m => m.role === 'user');
+  if (firstUserMsg) {
+    let title = firstUserMsg.content.slice(0, 50).replace(/\n/g, ' ').trim();
+    if (firstUserMsg.content.length > 50) title += '…';
+    conv.title = title || 'Conversation';
+    chatTitleEl.textContent = conv.title;
+    saveAllConversations();
+    renderConversationList();
+  }
+}
+
+/* ============================================================
+   4. RENDU DE LA LISTE DES CONVERSATIONS
+   ============================================================ */
+function renderConversationList() {
+  const query = (searchInput.value || '').toLowerCase().trim();
+  const filtered = query
+    ? allConversations.filter(c => c.title.toLowerCase().includes(query))
+    : allConversations;
+
+  convListEl.innerHTML = '';
+
+  if (filtered.length === 0) {
+    convListEl.innerHTML = `<div id="conv-empty">${
+      query ? 'Aucun résultat' : 'Aucune conversation.<br>Cliquez sur "+ Nouvelle conversation".'
+    }</div>`;
+    convCount.textContent = `${allConversations.length} conversation${allConversations.length > 1 ? 's' : ''}`;
+    return;
+  }
+
+  filtered.forEach(conv => {
+    const item = document.createElement('div');
+    item.className = 'conv-item' + (conv.id === currentConvId ? ' active' : '');
+    item.dataset.id = conv.id;
+
+    const lastMsg = conv.messages[conv.messages.length - 1];
+    const preview = lastMsg ? lastMsg.content.slice(0, 40).replace(/\n/g, ' ') : 'Vide';
+
+    item.innerHTML = `
+      <div class="conv-info">
+        <div class="conv-title">${escapeHtml(conv.title)}</div>
+        <div class="conv-preview">${escapeHtml(preview)}</div>
+      </div>
+      <div class="conv-actions">
+        <button class="rename" title="Renommer">✎</button>
+        <button class="danger delete" title="Supprimer">✕</button>
+      </div>`;
+
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('.conv-actions')) return;
+      if (conv.id === currentConvId) return;
+      saveCurrentConversation();
+      loadConversation(conv.id);
+    });
+
+    item.querySelector('.delete').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!confirm(`Supprimer "${conv.title}" ?`)) return;
+      const idx = allConversations.findIndex(c => c.id === conv.id);
+      if (idx >= 0) allConversations.splice(idx, 1);
+      saveAllConversations();
+      if (currentConvId === conv.id) {
+        if (allConversations.length) loadConversation(allConversations[0].id);
+        else startNewChat();
+      } else {
+        renderConversationList();
+      }
+    });
+
+    item.querySelector('.rename').addEventListener('click', (e) => {
+      e.stopPropagation();
+      startRenameConv(conv.id, item);
+    });
+
+    convListEl.appendChild(item);
+  });
+
+  convCount.textContent = `${allConversations.length} conversation${allConversations.length > 1 ? 's' : ''}`;
+}
+
+function startRenameConv(convId, itemEl) {
+  const conv = allConversations.find(c => c.id === convId);
+  if (!conv) return;
+  const titleEl = itemEl.querySelector('.conv-title');
+  const input = document.createElement('input');
+  input.className = 'conv-title-input';
+  input.value = conv.title;
+  titleEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  const finish = (save) => {
+    if (save && input.value.trim()) {
+      conv.title = input.value.trim().slice(0, 80);
+      saveAllConversations();
+      if (conv.id === currentConvId) chatTitleEl.textContent = conv.title;
+    }
+    renderConversationList();
+  };
+  input.addEventListener('blur', () => finish(true));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.value = conv.title; input.blur(); }
+  });
+}
+
+/* ============================================================
+   5. GRILLE + ŒIL
+   ============================================================ */
+function buildGrid() {
+  const wrap = document.getElementById('stage-wrap');
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  const margin = 24;
+  const gap = 10;
+  const availW = w - margin * 2;
+  const availH = h - margin * 2;
+  const cellW = (availW - gap * 2) / 3;
+  const cellH = (availH - gap * 2) / 3;
+  gridMetrics = { cellW, cellH, offsetX: margin, offsetY: margin, gap };
+
+  cellsLayer.innerHTML = '';
+  GRID.forEach((pos, idx) => {
+    const isCenter = pos.col === 1 && pos.row === 1;
+    const x = margin + pos.col * (cellW + gap);
+    const y = margin + pos.row * (cellH + gap);
+
+    const frame = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    frame.setAttribute('x', x); frame.setAttribute('y', y);
+    frame.setAttribute('width', cellW); frame.setAttribute('height', cellH);
+    frame.setAttribute('fill', isCenter ? 'none' : '#0a0a0a');
+    frame.setAttribute('stroke', '#1a1a1a'); frame.setAttribute('stroke-width', '1');
+    frame.setAttribute('rx', '6');
+    cellsLayer.appendChild(frame);
+
+    if (!isCenter) {
+      const inner = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      inner.setAttribute('x', x + 6); inner.setAttribute('y', y + 6);
+      inner.setAttribute('width', cellW - 12); inner.setAttribute('height', cellH - 12);
+      inner.setAttribute('fill', 'none'); inner.setAttribute('stroke', '#141414');
+      inner.setAttribute('stroke-width', '0.5'); inner.setAttribute('stroke-dasharray', '3 5');
+      inner.setAttribute('rx', '4');
+      cellsLayer.appendChild(inner);
+    }
+    if (isCenter) return;
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('data-cell', idx);
+    const clipId = `clip-cell-${idx}`;
+    const clip = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+    clip.setAttribute('id', clipId);
+    const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    clipRect.setAttribute('x', x); clipRect.setAttribute('y', y);
+    clipRect.setAttribute('width', cellW); clipRect.setAttribute('height', cellH);
+    clipRect.setAttribute('rx', '6');
+    clip.appendChild(clipRect); cellsLayer.appendChild(clip);
+    g.setAttribute('clip-path', `url(#${clipId})`);
+    cellsLayer.appendChild(g);
+    g._cellGeom = { x, y, w: cellW, h: cellH };
+  });
+
+  Object.entries(cellElements).forEach(([role, data]) => {
+    const cellIdx = ROLE_CELL[role];
+    if (cellIdx === -1 || cellIdx === undefined) return;
+    const g = findCellGroup(cellIdx);
+    if (g && data.el) positionElementInCell(data.el, g._cellGeom);
+  });
+}
+
+function findCellGroup(cellIdx) {
+  for (const g of cellsLayer.querySelectorAll('g[data-cell]')) {
+    if (parseInt(g.getAttribute('data-cell'), 10) === cellIdx) return g;
+  }
+  return null;
+}
+
+function resizeStage() {
+  const wrap = document.getElementById('stage-wrap');
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  svgStage.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  svgStage.setAttribute('width', w); svgStage.setAttribute('height', h);
+  const g = gridMetrics;
+  const cx = g.offsetX + 1 * (g.cellW + g.gap) + g.cellW / 2;
+  const cy = g.offsetY + 1 * (g.cellH + g.gap) + g.cellH / 2;
+  const scale = Math.min(g.cellW, g.cellH) / 240;
+  halEye.setAttribute('transform', `translate(${cx}, ${cy}) scale(${scale.toFixed(3)})`);
+  eyeCenter.x = cx; eyeCenter.y = cy;
+  buildGrid();
+}
+
+function animatePupil() {
+  const wrap = document.getElementById('stage-wrap');
+  const rect = wrap.getBoundingClientRect();
+  const localX = mouseX - rect.left;
+  const localY = mouseY - rect.top;
+  const dx = localX - eyeCenter.x, dy = localY - eyeCenter.y;
+  const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+  const r = Math.min(28, dist * 0.07);
+  const tx = (dx / dist) * r, ty = (dy / dist) * r;
+  currentPupil.x += (tx - currentPupil.x) * 0.15;
+  currentPupil.y += (ty - currentPupil.y) * 0.15;
+  pupilGroup.setAttribute('transform', `translate(${currentPupil.x.toFixed(2)}, ${currentPupil.y.toFixed(2)})`);
+  requestAnimationFrame(animatePupil);
+}
+
+/* ============================================================
+   6. ÉTATS VISUELS
+   ============================================================ */
+function startThinking(label) {
+  statusText.textContent = label || 'Traitement…';
+  statusEl.className = 'active';
+  loaderArc.setAttribute('opacity', '1');
+  let angle = 0;
+  pulseInterval = setInterval(() => {
+    angle = (angle + 6) % 360;
+    loaderArc.setAttribute('transform', `rotate(${angle})`);
+    const s = 1 + Math.sin(Date.now() / 170) * 0.05;
+    eyeGlow.setAttribute('r', (48 * s).toFixed(2));
+    halo.setAttribute('r', (120 * s).toFixed(2));
+  }, 16);
+}
+function stopThinking() {
+  statusText.textContent = 'Prêt';
+  statusEl.className = '';
+  loaderArc.setAttribute('opacity', '0');
+  clearInterval(pulseInterval);
+  eyeGlow.setAttribute('r', '48'); halo.setAttribute('r', '120');
+  overlay.classList.remove('show');
+}
+function blink() {
+  let t = 0;
+  const anim = setInterval(() => {
+    t += 0.1;
+    const s = Math.abs(Math.cos(t * Math.PI)) * 0.5 + 0.5;
+    eyeGlow.setAttribute('r', (48 * s).toFixed(2));
+    if (t >= 1) { clearInterval(anim); eyeGlow.setAttribute('r', '48'); }
+  }, 18);
+}
+
+/* ============================================================
+   7. COOKIES
+   ============================================================ */
+function setCookie(n, v, d) {
+  const dt = new Date(); dt.setTime(dt.getTime() + d*24*60*60*1000);
+  document.cookie = `${n}=${encodeURIComponent(v)}; expires=${dt.toUTCString()}; path=/; SameSite=Strict`;
+}
+function getCookie(n) {
+  const m = document.cookie.match(new RegExp('(?:^|; )' + n + '=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+const saved = getCookie(COOKIE_NAME);
+if (saved) { apiKeysEl.value = saved; apiBtn.classList.add('configured'); }
+apiKeysEl.addEventListener('input', () => {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    setCookie(COOKIE_NAME, apiKeysEl.value, 7);
+    if (apiKeysEl.value.trim()) apiBtn.classList.add('configured');
+    else apiBtn.classList.remove('configured');
+  }, 500);
+});
+function getKeys() { return apiKeysEl.value.split('\n').map(k => k.trim()).filter(Boolean); }
+
+/* ============================================================
+   8. MESSAGES UI
+   ============================================================ */
+let msgIdCounter = 0;
+function addMessageToUI(role, content, animate = true) {
+  const id = ++msgIdCounter;
+  const row = document.createElement('div');
+  row.className = `msg-row ${role}`;
+  row.dataset.msgId = id;
+
+  if (role === 'user' || role === 'assistant') {
+    const avatar = document.createElement('div');
+    avatar.className = `avatar ${role}`;
+    avatar.textContent = role === 'user' ? 'U' : 'H';
+    row.appendChild(avatar);
+  }
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = content;
+  row.appendChild(bubble);
+
+  messagesEl.appendChild(row);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  const msg = { id, role, content, el: row, bubble };
+  uiMessages.push(msg);
+  return msg;
+}
+
+function updateMessageContent(msg, newContent) {
+  msg.content = newContent;
+  msg.bubble.textContent = newContent;
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+/* ============================================================
+   9. FICHIERS
+   ============================================================ */
+function getExt(name) { return name.split('.').pop().toLowerCase(); }
+
+function fileIconClass(ext) {
+  if (['xlsx','xls','csv'].includes(ext)) return 'xls';
+  if (['docx','doc'].includes(ext)) return 'doc';
+  if (['pptx','ppt'].includes(ext)) return 'ppt';
+  if (['pdf'].includes(ext)) return 'pdf';
+  if (['png','jpg','jpeg','webp','gif'].includes(ext)) return 'img';
+  if (['db','sqlite','sqlite3'].includes(ext)) return 'db';
+  if (['sql'].includes(ext)) return 'sql';
+  return 'txt';
+}
+function fileIconLabel(ext) {
+  const m = { xlsx:'XLS', xls:'XLS', csv:'CSV', docx:'DOC', doc:'DOC', pptx:'PPT',
+              ppt:'PPT', pdf:'PDF', png:'IMG', jpg:'IMG', jpeg:'IMG', webp:'IMG',
+              gif:'IMG', txt:'TXT', md:'MD', json:'{}', db:'DB', sqlite:'DB',
+              sqlite3:'DB', sql:'SQL' };
+  return m[ext] || '?';
+}
+function formatSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(2) + ' MB';
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderChips() {
+  fileChips.innerHTML = '';
+  files.forEach(f => {
+    const chip = document.createElement('div');
+    chip.className = 'file-chip';
+    chip.innerHTML = `
+      <div class="ficon ${fileIconClass(f.ext)}">${fileIconLabel(f.ext)}</div>
+      <span class="fname" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+      <span class="status ${f.status}">${
+        f.status === 'ready' ? '✓' :
+        f.status === 'error' ? '⚠' :
+        f.status === 'parsing' ? '…' : '·'
+      }</span>
+      <span class="remove" title="Retirer">✕</span>`;
+    chip.querySelector('.remove').addEventListener('click', () => {
+      const i = files.indexOf(f);
+      if (i >= 0) files.splice(i, 1);
+      renderChips();
+      saveCurrentConversation();
+    });
+    fileChips.appendChild(chip);
+  });
+}
+
+async function handleFiles(list) {
+  for (const file of list) {
+    const ext = getExt(file.name);
+    const entry = { file, name: file.name, ext, size: file.size, status: 'pending', text: '' };
+    files.push(entry);
+    renderChips();
+    await parseFile(entry);
+    renderChips();
+  }
+  saveCurrentConversation();
+}
+
+/* ============================================================
+   10. PARSING
+   ============================================================ */
+async function parseFile(entry) {
+  entry.status = 'parsing';
+  renderChips();
+  try {
+    const ext = entry.ext;
+    if (['txt','md','json'].includes(ext)) entry.text = await entry.file.text();
+    else if (ext === 'csv') entry.text = await parseCSV(entry.file);
+    else if (['xlsx','xls'].includes(ext)) entry.text = await parseExcel(entry.file);
+    else if (['docx','doc'].includes(ext)) entry.text = await parseWord(entry.file);
+    else if (['pptx','ppt'].includes(ext)) entry.text = await parsePowerPoint(entry.file);
+    else if (ext === 'pdf') entry.text = await parsePDF(entry.file);
+    else if (['db','sqlite','sqlite3'].includes(ext)) entry.text = await parseSQLite(entry.file);
+    else if (ext === 'sql') entry.text = await parseSQLDump(entry.file);
+    else if (['png','jpg','jpeg','webp','gif'].includes(ext)) entry.text = `[Image: ${entry.name} — ${formatSize(entry.size)}]`;
+    else entry.text = `[Fichier non supporté: .${ext}]`;
+
+    if (entry.text.length > MAX_FILE_TEXT) entry.text = entry.text.slice(0, MAX_FILE_TEXT) + '\n[…tronqué]';
+    entry.status = 'ready';
+    addMessageToUI('system', `📎 ${entry.name} analysé (${entry.text.length} car.)`);
+  } catch (err) {
+    console.error(err);
+    entry.status = 'error';
+    entry.text = '';
+    addMessageToUI('error', `⚠ Erreur ${entry.name}: ${err.message}`);
+  }
+  renderChips();
+}
+
+async function parseCSV(file) {
+  const txt = await file.text();
+  const sep = detectSeparator(txt);
+  const rows = txt.split(/\r?\n/).filter(r => r.length).map(r => r.split(sep));
+  if (!rows.length) return '[CSV vide]';
+  return buildTableSummary('CSV', rows[0], rows.slice(1), sep);
+}
+function detectSeparator(txt) {
+  const first = txt.split(/\r?\n/)[0] || '';
+  const counts = { ',':0, ';':0, '\t':0, '|':0 };
+  for (const c of first) if (c in counts) counts[c]++;
+  return Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0] || ',';
+}
+
+async function parseExcel(file) {
+  if (typeof XLSX === 'undefined') throw new Error('XLSX non chargé');
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array' });
+  let out = '';
+  for (const sheetName of wb.SheetNames) {
+    const ws = wb.Sheets[sheetName];
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false });
+    if (!aoa.length) { out += `\n=== ${sheetName} (vide) ===\n`; continue; }
+    const headers = aoa[0].map(String);
+    const data = aoa.slice(1).map(r => r.map(v => v == null ? '' : String(v)));
+    out += `\n\n=== FEUILLE: ${sheetName} ===\n`;
+    out += buildTableSummary(`Feuille ${sheetName}`, headers, data, '|');
+  }
+  return out;
+}
+
+async function parseWord(file) {
+  if (typeof mammoth === 'undefined') throw new Error('mammoth non chargé');
+  const buf = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer: buf });
+  return `[Word]\n${result.value}`;
+}
+
+async function parsePowerPoint(file) {
+  if (typeof JSZip === 'undefined') throw new Error('JSZip non chargé');
+  const buf = await file.arrayBuffer();
+  const zip = await JSZip.loadAsync(buf);
+  let out = '';
+  const slideFiles = Object.keys(zip.files).filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f))
+    .sort((a,b) => parseInt(a.match(/slide(\d+)/)[1]) - parseInt(b.match(/slide(\d+)/)[1]));
+  for (let i = 0; i < slideFiles.length; i++) {
+    const xml = await zip.file(slideFiles[i]).async('string');
+    const texts = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map(m => m[1]);
+    out += `\n=== SLIDE ${i+1} ===\n${texts.join(' ')}\n`;
+  }
+  return `[PowerPoint: ${slideFiles.length} slides]\n${out}`;
+}
+
+async function parsePDF(file) {
+  if (typeof pdfjsLib === 'undefined') throw new Error('pdf.js non chargé');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  let out = `[PDF: ${pdf.numPages} pages]\n`;
+  const maxPages = Math.min(pdf.numPages, 30);
+  for (let i = 1; i <= maxPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    out += `\n--- Page ${i} ---\n${content.items.map(it => it.str).join(' ')}\n`;
+  }
+  if (pdf.numPages > maxPages) out += `\n[…${pdf.numPages - maxPages} pages non lues]`;
+  return out;
+}
+
+let sqlModule2 = null;
+async function loadSqlJs() {
+  if (sqlModule2) return sqlModule2;
+  if (typeof initSqlJs === 'undefined') throw new Error('sql.js non chargé');
+  sqlModule2 = await initSqlJs({ locateFile: f => `https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/${f}` });
+  return sqlModule2;
+}
+async function parseSQLite(file) {
+  const SQL = await loadSqlJs();
+  const buf = new Uint8Array(await file.arrayBuffer());
+  const db = new SQL.Database(buf);
+  const tables = db.exec("SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+  if (!tables.length || !tables[0].values.length) return '[Base SQLite: aucune table]';
+  let out = `[SQLite: ${file.name}]\n`;
+  for (const [tname, tsql] of tables[0].values) {
+    out += `\n=== TABLE: ${tname} ===\nCREATE: ${tsql}\n`;
+    try {
+      const cnt = db.exec(`SELECT COUNT(*) FROM "${tname}"`);
+      out += `Lignes: ${cnt[0]?.values[0][0] ?? 0}\n`;
+      const info = db.exec(`PRAGMA table_info("${tname}")`);
+      const cols = info[0]?.values.map(v => ({ name: v[1], type: v[2] })) || [];
+      out += `Colonnes: ${cols.map(c => `${c.name}(${c.type||'?'})`).join(', ')}\n`;
+      const sample = db.exec(`SELECT * FROM "${tname}" LIMIT 20`);
+      if (sample[0]) {
+        out += buildTableSummary(`Échantillon ${tname}`, sample[0].columns,
+          sample[0].values.map(r => r.map(v => v == null ? '' : String(v))), '|');
+      }
+      out += profileColumns(db, tname, cols);
+    } catch (e) { out += `[Erreur: ${e.message}]\n`; }
+  }
+  db.close();
+  return out;
+}
+function profileColumns(db, tname, cols) {
+  let out = '\n--- Profiling ---\n';
+  for (const c of cols) {
+    try {
+      const q = `SELECT COUNT(DISTINCT "${c.name}"), SUM(CASE WHEN "${c.name}" IS NULL THEN 1 ELSE 0 END), MIN("${c.name}"), MAX("${c.name}") FROM "${tname}"`;
+      const r = db.exec(q);
+      if (r[0]) {
+        const [d, n, mn, mx] = r[0].values[0];
+        out += `  ${c.name}: distinct=${d}, nulls=${n}, min=${fmtVal(mn)}, max=${fmtVal(mx)}\n`;
+      }
+    } catch (e) {}
+  }
+  return out;
+}
+function fmtVal(v) {
+  if (v == null) return '∅';
+  const s = String(v);
+  return s.length > 40 ? s.slice(0,40) + '…' : s;
+}
+
+async function parseSQLDump(file) {
+  const txt = await file.text();
+  const tables = {};
+  const createRe = /CREATE TABLE\s+(?:IF NOT EXISTS\s+)?[`"']?(\w+)[`"']?\s*\(([\s\S]*?)\)\s*;/gi;
+  let m;
+  while ((m = createRe.exec(txt)) !== null) {
+    const cols = [];
+    for (const line of m[2].split(',')) {
+      const cm = line.trim().match(/^[`"']?(\w+)[`"']?\s+([A-Za-z]+)/);
+      if (cm) cols.push({ name: cm[1], type: cm[2] });
+    }
+    tables[m[1]] = { cols, rows: [] };
+  }
+  const insertRe = /INSERT INTO\s+[`"']?(\w+)[`"']?(?:\s*\(([^)]+)\))?\s*VALUES\s*([\s\S]*?);/gi;
+  while ((m = insertRe.exec(txt)) !== null) {
+    if (!tables[m[1]]) continue;
+    for (const row of parseValueRows(m[3])) tables[m[1]].rows.push(row);
+  }
+  let out = `[SQL dump: ${Object.keys(tables).length} tables]\n`;
+  for (const [tname, t] of Object.entries(tables)) {
+    out += `\n=== TABLE: ${tname} ===\n`;
+    out += `Colonnes: ${t.cols.map(c => `${c.name}(${c.type})`).join(', ')}\n`;
+    out += `Lignes: ${t.rows.length}\n`;
+    if (t.rows.length) {
+      out += buildTableSummary(`Échantillon ${tname}`,
+        t.cols.map(c => c.name),
+        t.rows.slice(0, 20).map(r => r.map(v => v == null ? '' : String(v))), '|');
+    }
+  }
+  return out;
+}
+function parseValueRows(s) {
+  const rows = [];
+  let depth = 0, current = '', inStr = false, quote = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) { current += c; if (c === quote && s[i-1] !== '\\') inStr = false; continue; }
+    if (c === "'" || c === '"') { inStr = true; quote = c; current += c; continue; }
+    if (c === '(') { depth++; current += c; continue; }
+    if (c === ')') { depth--; current += c;
+      if (depth === 0) { rows.push(parseRowValues(current)); current = ''; }
+      continue;
+    }
+    if (depth > 0) current += c;
+  }
+  return rows;
+}
+function parseRowValues(rowStr) {
+  const inner = rowStr.slice(1, -1);
+  const vals = [];
+  let cur = '', inStr = false, q = '';
+  for (let i = 0; i < inner.length; i++) {
+    const c = inner[i];
+    if (inStr) { if (c === q && inner[i-1] !== '\\') { inStr = false; vals.push(cur); cur = ''; } else cur += c; continue; }
+    if (c === "'" || c === '"') { inStr = true; q = c; continue; }
+    if (c === ',') { if (cur.trim()) vals.push(cur.trim()); cur = ''; continue; }
+    cur += c;
+  }
+  if (cur.trim()) vals.push(cur.trim());
+  return vals.map(v => v === 'NULL' ? null : v);
+}
+
+function buildTableSummary(name, headers, data, sep) {
+  const sepLabel = sep === '|' ? '│' : sep === '\t' ? '→' : sep;
+  let out = `Type: ${name}\n`;
+  out += `Dimensions: ${data.length} lignes × ${headers.length} colonnes\n`;
+  out += `Colonnes: ${headers.join(', ')}\n\n`;
+  const types = headers.map((h, i) => inferType(data.map(r => r[i])));
+  out += `Types inférés:\n`;
+  headers.forEach((h, i) => { out += `  - ${h}: ${types[i]}\n`; });
+  out += '\n';
+  const preview = data.slice(0, 8);
+  out += `Aperçu:\n`;
+  const widths = headers.map((h, i) => Math.max(h.length, ...preview.map(r => String(r[i] ?? '').length)));
+  out += headers.map((h, i) => pad(h, widths[i])).join(' ' + sepLabel + ' ') + '\n';
+  out += headers.map((h, i) => '─'.repeat(widths[i])).join('─' + sepLabel + '─') + '\n';
+  for (const row of preview) {
+    out += headers.map((h, i) => pad(String(row[i] ?? ''), widths[i])).join(' ' + sepLabel + ' ') + '\n';
+  }
+  return out + '\n';
+}
+function pad(s, w) { return s.length >= w ? s.slice(0, w) : s + ' '.repeat(w - s.length); }
+function inferType(vals) {
+  const nonEmpty = vals.filter(v => v != null && v !== '');
+  if (!nonEmpty.length) return 'unknown';
+  const isNum = nonEmpty.every(v => !isNaN(Number(v)));
+  const isInt = isNum && nonEmpty.every(v => Number.isInteger(Number(v)));
+  const isDate = nonEmpty.every(v => !isNaN(Date.parse(v)));
+  if (isInt) return 'integer';
+  if (isNum) return 'float';
+  if (isDate) return 'date';
+  return 'string';
+}
+
+/* ============================================================
+   11. UPLOAD (clic = sélecteur natif)
+   ============================================================ */
+attachBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  fileInput.click();
+});
+fileInput.addEventListener('change', (e) => {
+  if (e.target.files.length) handleFiles(e.target.files);
+  fileInput.value = '';
+});
+document.addEventListener('dragenter', (e) => {
+  e.preventDefault();
+  dragCounter++;
+  if (e.dataTransfer.types.includes('Files')) dragOverlay.classList.add('show');
+});
+document.addEventListener('dragleave', (e) => {
+  e.preventDefault();
+  dragCounter--;
+  if (dragCounter === 0) dragOverlay.classList.remove('show');
+});
+document.addEventListener('dragover', (e) => e.preventDefault());
+document.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dragCounter = 0;
+  dragOverlay.classList.remove('show');
+  if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+});
+
+/* ============================================================
+   12. CHAT API avec STREAMING
+   ============================================================ */
+async function callChatStreaming(history, apiKey, onChunk) {
+  if (currentStreamAbort) currentStreamAbort.abort();
+  const controller = new AbortController();
+  currentStreamAbort = controller;
+
+  const res = await fetch(`${API_BASE}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: MODEL_TEXT,
+      messages: history,
+      stream: true
+    }),
+    signal: controller.signal
+  });
+  if (!res.ok) throw new Error(`Chat HTTP ${res.status}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let fullText = '';
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split('\n');
+    buffer = lines.pop(); // garder la ligne incomplète
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith('data:')) continue;
+      const data = trimmed.slice(5).trim();
+      if (data === '[DONE]') continue;
+      try {
+        const json = JSON.parse(data);
+        const delta = json.choices?.[0]?.delta?.content || '';
+        if (delta) {
+          fullText += delta;
+          onChunk(fullText);
+        }
+      } catch (e) { /* chunk incomplet */ }
+    }
+  }
+
+  currentStreamAbort = null;
+  return fullText;
+}
+
+/* ============================================================
+   13. IMAGE API
+   ============================================================ */
+async function callImageGenerator(roleConfig, context, apiKey) {
+  const prompt = `Dark sci-fi technical illustration. Subject: ${roleConfig.prompt}. Data insight context: ${context}. Style: minimalist vector-like, thin lines, monochrome dark palette with a single bright red accent (#ff2a2a). Composition: clean, isolated on dark background. Quality: high detail, sharp.`;
+  const res = await fetch(`${API_BASE}/images/generations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: MODEL_IMAGE, prompt, size: '1K', ratio: '1:1',
+      extra_body: { response_format: 'url' }
+    })
+  });
+  if (!res.ok) { console.warn(`[${roleConfig.name}] HTTP ${res.status}`); return null; }
+  const data = await res.json();
+  return data.data?.[0]?.url || null;
+}
+
+/* ============================================================
+   14. INJECTION IMAGES
+   ============================================================ */
+function positionElementInCell(el, geom) {
+  el.setAttribute('width', geom.w); el.setAttribute('height', geom.h);
+  el.setAttribute('x', geom.x); el.setAttribute('y', geom.y);
+  el.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+}
+function injectImageInCell(imageUrl, roleName) {
+  const cellIdx = ROLE_CELL[roleName];
+  if (cellIdx === undefined) return;
+  if (cellIdx === -1) return injectAccentImage(imageUrl);
+  const g = findCellGroup(cellIdx);
+  if (!g) return;
+  while (g.firstChild) g.removeChild(g.firstChild);
+  const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+  img.setAttribute('href', imageUrl);
+  positionElementInCell(img, g._cellGeom);
+  img.style.opacity = '0'; img.style.transition = 'opacity 0.8s ease';
+  g.appendChild(img);
+  requestAnimationFrame(() => { img.style.opacity = '0.95'; });
+  cellElements[roleName] = { el: img };
+  cellFilled[roleName] = true;
+  imageCount = Object.keys(cellFilled).length;
+  svgCounter.textContent = `${imageCount} / 9 images`;
+}
+function injectAccentImage(imageUrl) {
+  const accentG = document.getElementById('accent-g');
+  while (accentG.firstChild) accentG.removeChild(accentG.firstChild);
+  if (!imageUrl) return;
+  const wrap = document.getElementById('stage-wrap');
+  const size = 72;
+  const x = wrap.clientWidth - size - 16;
+  const y = wrap.clientHeight - size - 50;
+  const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+  img.setAttribute('href', imageUrl);
+  img.setAttribute('x', x); img.setAttribute('y', y);
+  img.setAttribute('width', size); img.setAttribute('height', size);
+  img.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+  img.style.opacity = '0'; img.style.transition = 'opacity 0.6s ease';
+  accentG.appendChild(img);
+  requestAnimationFrame(() => { img.style.opacity = '0.9'; });
+}
+
+/* ============================================================
+   15. PIPELINE PRINCIPAL
+   ============================================================ */
+function buildDataContext() {
+  const ready = files.filter(f => f.status === 'ready' && f.text);
+  if (!ready.length) return '';
+  return ready.map(f => `### FICHIER: ${f.name}\n${f.text}`).join('\n\n');
+}
+
+async function sendQuestion(customText) {
+  if (busy) return;
+  const question = (customText ?? questionEl.value).trim();
+  if (!question && !files.length) return;
+
+  const keys = getKeys();
+  if (keys.length < 1) {
+    addMessageToUI('error', '⚠ Configurez au moins une clé API (bouton API).');
+    apiPanel.classList.add('show');
+    return;
+  }
+
+  // Si pas de conversation active → en créer une
+  if (!currentConvId) {
+    const conv = createNewConversation();
+    currentConvId = conv.id;
+    renderConversationList();
+  }
+
+  const chatKey = keys[0];
+  const imageKeys = keys.slice(1, 10);
+
+  busy = true;
+  sendBtn.disabled = true;
+  questionEl.value = '';
+  autoResize();
+
+  addMessageToUI('user', question || '(analyse des fichiers joints)');
+  autoTitleConversation();
+  blink();
+  overlay.classList.add('show');
+  startThinking('Analyse des données…');
+
+  try {
+    const dataContext = buildDataContext();
+    let systemPrompt = `Tu es HAL, un analyste de données expert. Tu reçois des fichiers (Excel, CSV, Word, PowerPoint, PDF, SQLite, SQL dump).`;
+    if (dataContext) {
+      systemPrompt += `
+
+INSTRUCTIONS:
+1. Identifie le TYPE de chaque fichier.
+2. Pour les tableaux/bases: décris SCHÉMA, VOLUMES, et 3-5 INSIGHTS concrets (tendances, corrélations, anomalies).
+3. Pour les textes: résume les points clés.
+4. Réponds en français, structuré avec titres en MAJUSCULES.
+5. Termine par "MOTS-CLÉS VISUELS:" avec 5-8 concepts à illustrer, séparés par des virgules.`;
+    }
+    let userContent = question || 'Analyse ces fichiers en profondeur.';
+    if (dataContext) userContent += `\n\n=== DONNÉES ===\n${dataContext.slice(0, MAX_FILE_TEXT * 2)}`;
+
+    conversationHistory.push({ role: 'user', content: userContent });
+
+    // Message assistant vide qui va se remplir en streaming
+    const assistantMsg = addMessageToUI('assistant', '');
+    const cursor = document.createElement('span');
+    cursor.className = 'streaming-cursor';
+    assistantMsg.bubble.appendChild(cursor);
+
+    const fullAnswer = await callChatStreaming(
+      [{ role: 'system', content: systemPrompt }, ...conversationHistory.slice(-4)],
+      chatKey,
+      (partial) => {
+        assistantMsg.bubble.textContent = partial;
+        assistantMsg.bubble.appendChild(cursor);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+    );
+
+    // Retirer curseur, finaliser
+    cursor.remove();
+    updateMessageContent(assistantMsg, fullAnswer);
+    conversationHistory.push({ role: 'assistant', content: fullAnswer });
+    saveCurrentConversation();
+
+    // Follow-ups suggérés
+    const followups = extractFollowups(fullAnswer);
+    if (followups.length) {
+      addFollowups(followups);
+    }
+
+    // Génération d'images
+    const visualContext = extractVisualContext(fullAnswer);
+    if (imageKeys.length > 0) {
+      SVG_ROLES.slice(0, imageKeys.length).forEach((role, i) => {
+        callImageGenerator(role, visualContext, imageKeys[i])
+          .then(url => { if (url) injectImageInCell(url, role.name); })
+          .catch(err => console.warn(`[${role.name}]`, err.message));
+      });
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      addMessageToUI('error', `Erreur : ${err.message}`);
+    }
+  } finally {
+    stopThinking();
+    overlay.classList.remove('show');
+    busy = false;
+    sendBtn.disabled = false;
+    questionEl.focus();
+    saveCurrentConversation();
+    renderConversationList();
+  }
+}
+
+function extractVisualContext(answer) {
+  const m = answer.match(/MOTS-CL[EÉ]S VISUELS\s*:?\s*([\s\S]*?)(?:\n\n|$)/i);
+  let keywords = m ? m[1].trim() : '';
+  if (!keywords) {
+    keywords = answer.replace(/[^\wÀ-ÿ\s]/g, ' ').split(/\s+/)
+      .filter(w => w.length > 4).slice(0, 15).join(', ');
+  }
+  return `Insights: ${keywords}. Résumé: ${answer.slice(0, 500)}`;
+}
+
+function extractFollowups(answer) {
+  // 1) Cherche "SUGGESTIONS:" ou "QUESTIONS DE SUIVI:"
+  const m = answer.match(/(?:SUGGESTIONS|QUESTIONS? DE SUIVI)\s*:?\s*([\s\S]*?)(?:\n\n|$)/i);
+  if (m) {
+    const lines = m[1].split('\n').map(l => l.replace(/^[-•*\d.]+\s*/, '').trim()).filter(Boolean);
+    if (lines.length) return lines.slice(0, 3);
+  }
+
+  // 2) Sinon, génère 3 questions pertinentes basées sur le contenu
+  const suggestions = [];
+  const lower = answer.toLowerCase();
+
+  if (/\b(table|colonne|schéma|schema|sqlite|excel|csv)\b/.test(lower)) {
+    suggestions.push('Détaille le schéma et les types de chaque colonne');
+  }
+  if (/\b(tendance|hausse|baisse|augment|diminu|progression)\b/.test(lower)) {
+    suggestions.push('Visualise les tendances sous forme de graphique');
+  }
+  if (/\b(anomalie|aberration|valeur|extrême|outlier)\b/.test(lower)) {
+    suggestions.push('Liste toutes les anomalies et valeurs extrêmes');
+  }
+  if (/\b(corrélation|relation|lien|dépendance)\b/.test(lower)) {
+    suggestions.push('Quelles corrélations peut-on exploiter ?');
+  }
+  if (/\b(résumé|resume|conclusion|synthèse)\b/.test(lower)) {
+    suggestions.push('Donne-moi une synthèse en 5 points clés');
+  }
+
+  // Toujours proposer au moins 2 génériques
+  if (suggestions.length < 3) {
+    const generics = [
+      'Approfondis les points les plus importants',
+      'Génère des visualisations basées sur ces insights',
+      'Quelles actions concrètes recommandes-tu ?',
+      'Résume en 3 phrases pour un décideur'
+    ];
+    for (const g of generics) {
+      if (suggestions.length >= 3) break;
+      if (!suggestions.includes(g)) suggestions.push(g);
+    }
+  }
+
+  return suggestions.slice(0, 3);
+}
+
+function addFollowups(suggestions) {
+  const row = document.createElement('div');
+  row.className = 'msg-row assistant';
+  // pas d'avatar pour les followups
+  const container = document.createElement('div');
+  container.className = 'followups';
+  container.style.marginLeft = '40px';
+
+  suggestions.forEach(s => {
+    const btn = document.createElement('button');
+    btn.className = 'followup-btn';
+    btn.textContent = s;
+    btn.addEventListener('click', () => {
+      container.remove();
+      sendQuestion(s);
+    });
+    container.appendChild(btn);
+  });
+
+  row.appendChild(container);
+  messagesEl.appendChild(row);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+/* ============================================================
+   16. AUTO-RESIZE
+   ============================================================ */
+function autoResize() {
+  questionEl.style.height = 'auto';
+  questionEl.style.height = Math.min(questionEl.scrollHeight, 200) + 'px';
+}
+questionEl.addEventListener('input', autoResize);
+
+/* ============================================================
+   17. ÉVÉNEMENTS
+   ============================================================ */
+sendBtn.addEventListener('click', () => sendQuestion());
+questionEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuestion(); }
+});
+
+apiBtn.addEventListener('click', () => {
+  apiPanel.classList.toggle('show');
+  if (apiPanel.classList.contains('show')) apiKeysEl.focus();
+});
+
+newChatBtn.addEventListener('click', () => {
+  saveCurrentConversation();
+  startNewChat();
+});
+
+clearAllBtn.addEventListener('click', () => {
+  if (!confirm('Effacer TOUTES les conversations ? Cette action est irréversible.')) return;
+  allConversations = [];
+  saveAllConversations();
+  startNewChat();
+});
+
+searchInput.addEventListener('input', renderConversationList);
+
+// Renommer via double-clic sur le titre du chat
+chatTitleEl.addEventListener('dblclick', () => {
+  if (!currentConvId) return;
+  const conv = allConversations.find(c => c.id === currentConvId);
+  if (!conv) return;
+  const input = document.createElement('input');
+  input.className = 'conv-title-input';
+  input.style.fontSize = '13.5px';
+  input.value = conv.title;
+  chatTitleEl.replaceWith(input);
+  input.focus();
+  input.select();
+  const finish = () => {
+    if (input.value.trim()) {
+      conv.title = input.value.trim().slice(0, 80);
+      saveAllConversations();
+    }
+    input.replaceWith(chatTitleEl);
+    chatTitleEl.textContent = conv.title;
+    renderConversationList();
+  };
+  input.addEventListener('blur', finish);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') input.blur();
+    if (e.key === 'Escape') { input.value = conv.title; input.blur(); }
+  });
+});
+
+/* ============================================================
+   18. START / RESET
+   ============================================================ */
+function startNewChat() {
+  const conv = createNewConversation();
+  currentConvId = conv.id;
+  conversationHistory = [];
+  uiMessages = [];
+  files.length = 0;
+  messagesEl.innerHTML = '';
+  fileChips.innerHTML = '';
+  chatTitleEl.textContent = conv.title;
+  renderConversationList();
+
+  // Reset visuel
+  Object.keys(cellElements).forEach(r => delete cellElements[r]);
+  Object.keys(cellFilled).forEach(r => delete cellFilled[r]);
+  buildGrid();
+  imageCount = 0;
+  svgCounter.textContent = '0 / 9 images';
+  document.getElementById('accent-g').innerHTML = '';
+}
+
+/* ============================================================
+   19. INIT
+   ============================================================ */
+loadAllConversations();
+
+requestAnimationFrame(() => {
+  resizeStage();
+  animatePupil();
+
+  if (allConversations.length > 0) {
+    // Charger la plus récente
+    loadConversation(allConversations[0].id);
+  } else {
+    // Créer la première
+    startNewChat();
+    addMessageToUI('assistant', 'Bonjour, je suis HAL. Joignez des fichiers (Excel, CSV, SQLite, SQL, Word, PowerPoint, PDF, images) puis posez votre question.');
+  }
+});
+
+window.addEventListener('resize', () => {
+  resizeStage();
+});
+
+document.addEventListener('mousemove', (e) => {
+  mouseX = e.clientX; mouseY = e.clientY;
+});
+</script>
+</body>
+</html>
