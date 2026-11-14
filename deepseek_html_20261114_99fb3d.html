@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HAL · Assistant</title>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --bg-sidebar: #111111;
+    --bg-input: #1a1a1a;
+    --bg-hover: #222222;
+    --fg: #ececec;
+    --fg-dim: #8a8a8a;
+    --fg-muted: #5a5a5a;
+    --accent: #d97757;
+    --accent-hover: #e08a6e;
+    --border: #2a2a2a;
+    --border-strong: #3a3a3a;
+    --green: #6dd49a;
+    --red: #e07070;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'SF Pro Text', 'Inter', system-ui, sans-serif;
+    --mono: 'SF Mono', 'Consolas', 'Menlo', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--fg); font-family: var(--font); overflow: hidden; font-size: 15px; -webkit-font-smoothing: antialiased; }
+  #app { display: flex; height: 100vh; }
+
+  #sidebar { width: 260px; background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+  #sidebar-header { padding: 16px 14px; border-bottom: 1px solid var(--border); }
+  #sidebar-brand { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; margin-bottom: 14px; }
+  #sidebar-brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  #new-chat-btn { width: 100%; background: var(--bg-input); border: 1px solid var(--border); color: var(--fg); padding: 10px 14px; border-radius: 8px; cursor: pointer; font-family: var(--font); font-size: 13.5px; font-weight: 500; text-align: left; display: flex; align-items: center; gap: 8px; transition: all 0.15s; }
+  #new-chat-btn:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+  #new-chat-btn .plus { font-size: 16px; color: var(--accent); }
+  #conv-list { flex: 1; overflow-y: auto; padding: 8px; }
+  #conv-list::-webkit-scrollbar { width: 6px; }
+  #conv-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .conv-item { padding: 10px 12px; border-radius: 8px; cursor: pointer; margin-bottom: 2px; display: flex; align-items: center; gap: 8px; transition: background 0.1s; }
+  .conv-item:hover { background: var(--bg-hover); }
+  .conv-item.active { background: var(--bg-input); }
+  .conv-info { flex: 1; min-width: 0; }
+  .conv-title { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .conv-date { font-size: 10.5px; color: var(--fg-muted); margin-top: 2px; }
+  .conv-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.1s; }
+  .conv-item:hover .conv-actions { opacity: 1; }
+  .conv-actions button { background: transparent; border: none; color: var(--fg-muted); cursor: pointer; padding: 3px 5px; border-radius: 4px; display: flex; }
+  .conv-actions button:hover { background: var(--bg); color: var(--fg); }
+  .conv-actions button.danger:hover { color: var(--red); }
+  #sidebar-footer { padding: 12px 14px; border-top: 1px solid var(--border); }
+  .footer-btn { width: 100%; background: transparent; border: 1px solid var(--border); color: var(--fg-dim); cursor: pointer; font-size: 11px; padding: 8px; border-radius: 6px; font-family: var(--font); }
+  .footer-btn:hover { background: var(--bg-hover); color: var(--red); border-color: var(--red); }
+
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #top-bar { padding: 12px 20px; display: flex; align-items: center; gap: 8px; flex-shrink: 0; border-bottom: 1px solid var(--border); height: 52px; }
+  #top-title { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  #api-btn { background: transparent; border: 1px solid var(--border); color: var(--fg-dim); cursor: pointer; padding: 6px 12px; border-radius: 6px; font-family: var(--font); font-size: 12px; display: flex; align-items: center; gap: 6px; transition: all 0.15s; }
+  #api-btn:hover { color: var(--fg); border-color: var(--border-strong); }
+  #api-btn.configured { color: var(--green); border-color: var(--green); }
+  #api-btn .key-count { background: var(--green); color: var(--bg); font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; }
+
+  #scroll-container { flex: 1; overflow-y: auto; }
+  #scroll-container::-webkit-scrollbar { width: 8px; }
+  #scroll-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  #messages { max-width: 48rem; margin: 0 auto; padding: 32px 24px 60px; }
+
+  .msg-row { display: flex; gap: 14px; margin-bottom: 24px; animation: msgIn 0.3s ease-out; }
+  @keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .msg-row.user { flex-direction: row-reverse; }
+  .avatar { width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+  .avatar.assistant { background: var(--accent); color: white; }
+  .avatar.user { background: var(--bg-input); color: var(--fg-dim); border: 1px solid var(--border); }
+  .bubble { flex: 1; min-width: 0; padding: 4px 0; line-height: 1.65; font-size: 15px; white-space: pre-wrap; word-break: break-word; }
+  .msg-row.user .bubble { background: var(--bg-input); padding: 10px 14px; border-radius: 16px; border-top-right-radius: 4px; max-width: 80%; flex: 0 1 auto; margin-left: auto; }
+  .msg-row.system .bubble { font-size: 12.5px; color: var(--fg-dim); font-family: var(--mono); padding: 6px 10px; background: var(--bg-input); border-radius: 8px; max-width: 100%; }
+  .msg-row.error .bubble { color: var(--red); font-size: 13px; padding: 8px 12px; background: rgba(224, 112, 112, 0.08); border-radius: 8px; max-width: 100%; }
+  .streaming-cursor { display: inline-block; width: 9px; height: 18px; background: var(--accent); margin-left: 2px; vertical-align: text-bottom; animation: cursorBlink 1s infinite; }
+  @keyframes cursorBlink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+
+  .download-card { margin: 14px 0 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 12px; display: flex; align-items: center; padding: 12px 14px; gap: 12px; transition: all 0.15s; }
+  .download-card:hover { border-color: var(--border-strong); }
+  .download-card .file-icon { width: 44px; height: 44px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 9px; font-weight: 700; color: white; }
+  .file-icon.word  { background: linear-gradient(135deg, #2b579a, #1e3f6f); }
+  .file-icon.excel { background: linear-gradient(135deg, #217346, #185a35); }
+  .file-icon.ppt   { background: linear-gradient(135deg, #d24726, #a33519); }
+  .file-icon.csv   { background: linear-gradient(135deg, #10b981, #059669); }
+  .file-icon.md    { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+  .file-icon.pdf   { background: linear-gradient(135deg, #dc2626, #991b1b); }
+  .download-card .file-info { flex: 1; min-width: 0; }
+  .download-card .file-name { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 3px; }
+  .download-card .file-meta { font-size: 11px; color: var(--fg-muted); font-family: var(--mono); }
+  .download-card .download-btn { background: var(--accent); color: white; border: none; padding: 8px 16px; border-radius: 8px; font-family: var(--font); font-size: 12.5px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .download-card .download-btn:hover { background: var(--accent-hover); }
+  .download-card .download-btn svg { width: 14px; height: 14px; }
+
+  #input-area { padding: 12px 24px 20px; flex-shrink: 0; }
+  #input-wrap { max-width: 48rem; margin: 0 auto; }
+  #file-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  #file-chips:empty { display: none; }
+  .file-chip { display: flex; align-items: center; gap: 6px; padding: 5px 8px 5px 6px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; max-width: 240px; }
+  .file-chip .ficon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700; border-radius: 4px; background: var(--bg-hover); color: var(--fg-dim); }
+  .file-chip .fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
+  .file-chip .remove { color: var(--fg-muted); cursor: pointer; padding: 0 2px; font-size: 14px; }
+  .file-chip .remove:hover { color: var(--fg); }
+
+  #input-box { background: var(--bg-input); border: 1px solid var(--border); border-radius: 16px; padding: 12px 12px 8px 16px; display: flex; flex-direction: column; gap: 6px; transition: border-color 0.15s; }
+  #input-box:focus-within { border-color: var(--border-strong); }
+  #question { width: 100%; background: transparent; border: none; outline: none; color: var(--fg); font-family: var(--font); font-size: 15px; resize: none; min-height: 26px; max-height: 240px; line-height: 1.55; padding: 0; }
+  #question::placeholder { color: var(--fg-muted); }
+  #input-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  #input-left { display: flex; gap: 2px; align-items: center; }
+  .icon-btn { background: transparent; border: none; color: var(--fg-dim); cursor: pointer; padding: 6px; border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+  .icon-btn:hover { background: var(--bg-hover); color: var(--fg); }
+  .icon-btn svg { width: 18px; height: 18px; }
+  #send-btn { background: var(--accent); color: white; border: none; width: 34px; height: 34px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+  #send-btn:hover:not(:disabled) { background: var(--accent-hover); }
+  #send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  #send-btn svg { width: 16px; height: 16px; }
+  #input-note { text-align: center; font-size: 11px; color: var(--fg-muted); margin-top: 8px; }
+
+  #drag-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(6px); display: none; align-items: center; justify-content: center; z-index: 100; }
+  #drag-overlay.show { display: flex; }
+  #drag-overlay .inner { border: 2px dashed var(--accent); border-radius: 20px; padding: 60px 100px; text-align: center; color: var(--accent); font-size: 18px; font-weight: 600; background: var(--bg-input); }
+  #drag-overlay .inner .icon { font-size: 52px; display: block; margin-bottom: 16px; }
+
+  #api-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(6px); display: none; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
+  #api-modal-overlay.show { display: flex; }
+  .api-modal { background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: 16px; width: 100%; max-width: 520px; display: flex; flex-direction: column; box-shadow: 0 24px 80px rgba(0,0,0,0.6); animation: modalIn 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+  @keyframes modalIn { from { opacity: 0; transform: scale(0.95) translateY(12px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+  .api-modal-header { padding: 22px 24px 16px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); }
+  .api-modal-title-wrap { display: flex; align-items: center; gap: 12px; }
+  .api-modal-icon { width: 42px; height: 42px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent-hover)); display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0; }
+  .api-modal-icon svg { width: 20px; height: 20px; }
+  .api-modal-title { font-size: 17px; font-weight: 600; margin-bottom: 3px; }
+  .api-modal-subtitle { font-size: 12.5px; color: var(--fg-dim); }
+  .api-modal-close { background: transparent; border: none; color: var(--fg-muted); cursor: pointer; padding: 6px; border-radius: 8px; display: flex; }
+  .api-modal-close:hover { background: var(--bg-hover); color: var(--fg); }
+  .api-modal-body { padding: 20px 24px; }
+  .api-info { display: flex; gap: 10px; padding: 12px 14px; background: rgba(109, 212, 154, 0.06); border: 1px solid rgba(109, 212, 154, 0.2); border-radius: 10px; margin-bottom: 18px; font-size: 12.5px; color: var(--fg-dim); line-height: 1.5; }
+  .api-info svg { color: var(--green); flex-shrink: 0; margin-top: 1px; }
+  .api-info strong { color: var(--fg); }
+  .api-label { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 13.5px; font-weight: 500; }
+  .api-label .count { font-size: 11px; font-weight: 500; padding: 3px 9px; border-radius: 5px; background: var(--bg-input); color: var(--fg-muted); }
+  .api-label .count.has-keys { color: var(--green); background: rgba(109, 212, 154, 0.12); }
+  #api-keys-input { width: 100%; background: var(--bg); border: 1.5px solid var(--border); color: var(--fg); font-family: var(--mono); font-size: 13px; padding: 12px 14px; border-radius: 10px; outline: none; resize: vertical; min-height: 150px; line-height: 1.7; transition: border-color 0.15s; }
+  #api-keys-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.12); }
+  #api-keys-input::placeholder { color: var(--fg-muted); font-family: var(--font); letter-spacing: normal; line-height: 1.6; }
+  .api-hint { font-size: 11.5px; color: var(--fg-muted); margin-top: 8px; line-height: 1.5; }
+  .api-modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+  .api-btn { padding: 10px 20px; border-radius: 9px; font-family: var(--font); font-size: 13.5px; font-weight: 500; cursor: pointer; border: 1.5px solid transparent; transition: all 0.15s; }
+  .api-btn-secondary { background: transparent; color: var(--fg-dim); border-color: var(--border-strong); }
+  .api-btn-secondary:hover { background: var(--bg-hover); color: var(--fg); }
+  .api-btn-primary { background: var(--accent); color: white; }
+  .api-btn-primary:hover { background: var(--accent-hover); }
+
+  #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--fg); color: var(--bg); padding: 10px 20px; border-radius: 10px; font-size: 13px; font-weight: 500; opacity: 0; pointer-events: none; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); z-index: 300; }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  @media (max-width: 768px) {
+    #sidebar { display: none; }
+    #messages { padding: 20px 16px 40px; }
+    #input-area { padding: 8px 12px 16px; }
+    #input-note { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <aside id="sidebar">
+    <div id="sidebar-header">
+      <div id="sidebar-brand"><span class="dot"></span> HAL</div>
+      <button id="new-chat-btn"><span class="plus">+</span> Nouvelle conversation</button>
+    </div>
+    <div id="conv-list"></div>
+    <div id="sidebar-footer">
+      <button class="footer-btn" id="clear-all-btn">🗑 Tout effacer</button>
+    </div>
+  </aside>
+
+  <div id="main">
+    <div id="top-bar">
+      <div id="top-title">Nouvelle conversation</div>
+      <button id="api-btn">🔑 Clés API</button>
+    </div>
+
+    <div id="scroll-container">
+      <div id="messages"></div>
+    </div>
+
+    <div id="input-area">
+      <div id="input-wrap">
+        <div id="file-chips"></div>
+        <div id="input-box">
+          <textarea id="question" placeholder="Posez votre question…" rows="1"></textarea>
+          <div id="input-footer">
+            <div id="input-left">
+              <button class="icon-btn" id="attach-btn" title="Joindre des fichiers">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                </svg>
+              </button>
+            </div>
+            <div id="input-right">
+              <button id="send-btn" title="Envoyer">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="19" x2="12" y2="5"/>
+                  <polyline points="5 12 12 5 19 12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="input-note">Entrée pour envoyer · Maj+Entrée pour un retour à la ligne</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="file-input" multiple style="display:none"
+       accept=".db,.sqlite,.sqlite3,.sql,.xlsx,.xls,.csv,.docx,.doc,.pptx,.ppt,.pdf,.txt,.md,.json,.png,.jpg,.jpeg,.webp">
+
+<div id="drag-overlay">
+  <div class="inner">
+    <span class="icon">⬇</span>
+    Déposez vos fichiers ici
+  </div>
+</div>
+
+<div id="api-modal-overlay">
+  <div class="api-modal">
+    <div class="api-modal-header">
+      <div class="api-modal-title-wrap">
+        <div class="api-modal-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+          </svg>
+        </div>
+        <div>
+          <div class="api-modal-title">Clés API</div>
+          <div class="api-modal-subtitle">Collez vos clés, une par ligne</div>
+        </div>
+      </div>
+      <button class="api-modal-close" id="api-modal-close">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="api-modal-body">
+      <div class="api-info">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        <div>Clés stockées <strong>localement</strong>. Rotation automatique entre les clés en cas d'erreur.</div>
+      </div>
+      <div class="api-label">
+        <span>Vos clés API</span>
+        <span class="count" id="key-count">0 clé</span>
+      </div>
+      <textarea
+        id="api-keys-input"
+        placeholder="sk-abc123...
+sk-def456...
+sk-ghi789...
+
+Une clé par ligne"
+        spellcheck="false"
+        autocomplete="off"
+      ></textarea>
+      <div class="api-hint">
+        💡 Ajoutez plusieurs clés pour une rotation automatique si l'une échoue.
+      </div>
+    </div>
+    <div class="api-modal-footer">
+      <button class="api-btn api-btn-secondary" id="api-cancel">Annuler</button>
+      <button class="api-btn api-btn-primary" id="api-save">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ============================================================
+   CONFIG
+   ============================================================ */
+const API_BASE = 'https://apihub.agnes-ai.com/v1';
+const MODEL_TEXT = 'agnes-2.5-flash';
+const STORAGE_KEY = 'hal_conversations_v8';
+const API_STORAGE_COOKIE = 'hal_api_keys_v8';
+const MAX_FILE_TEXT = 40000;
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const files = [];
+let conversationHistory = [];
+let uiMessages = [];
+let currentConvId = null;
+let allConversations = [];
+let busy = false;
+let dragCounter = 0;
+let currentStreamAbort = null;
+
+let currentKeyIndex = 0;
+const failedKeys = new Set();
+
+/* ============================================================
+   DOM
+   ============================================================ */
+const $ = id => document.getElementById(id);
+const messagesEl = $('messages');
+const scrollEl = $('scroll-container');
+const questionEl = $('question');
+const sendBtn = $('send-btn');
+const attachBtn = $('attach-btn');
+const fileInput = $('file-input');
+const fileChips = $('file-chips');
+const dragOverlay = $('drag-overlay');
+const convListEl = $('conv-list');
+const newChatBtn = $('new-chat-btn');
+const clearAllBtn = $('clear-all-btn');
+const topTitle = $('top-title');
+const apiBtn = $('api-btn');
+const apiModalOverlay = $('api-modal-overlay');
+const apiModalClose = $('api-modal-close');
+const apiKeysInput = $('api-keys-input');
+const apiCancel = $('api-cancel');
+const apiSave = $('api-save');
+const keyCountEl = $('key-count');
+const toastEl = $('toast');
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+let toastTimer = null;
+function showToast(msg, duration = 2500) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), duration);
+}
+
+/* ============================================================
+   STORAGE
+   ============================================================ */
+function loadAllConversations() {
+  try { allConversations = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+  catch { allConversations = []; }
+}
+
+function saveAllConversations() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(allConversations)); } catch {}
+}
+
+function createNewConversation() {
+  const conv = {
+    id: 'conv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+    title: 'Nouvelle conversation',
+    messages: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  allConversations.unshift(conv);
+  saveAllConversations();
+  return conv;
+}
+
+function loadConversation(convId) {
+  const conv = allConversations.find(c => c.id === convId);
+  if (!conv) return;
+  currentConvId = conv.id;
+  conversationHistory = conv.messages.map(m => ({ role: m.role, content: m.content }));
+  messagesEl.innerHTML = '';
+  uiMessages = [];
+  conv.messages.forEach(m => addMessageToUI(m.role, m.content, false));
+  topTitle.textContent = conv.title;
+  files.length = 0;
+  renderChips();
+  renderConversationList();
+  scrollToBottom();
+}
+
+function saveCurrentConversation() {
+  if (!currentConvId) return;
+  const conv = allConversations.find(c => c.id === currentConvId);
+  if (!conv) return;
+  conv.messages = uiMessages.map(m => ({ role: m.role, content: m.content }));
+  conv.updatedAt = Date.now();
+  saveAllConversations();
+}
+
+function autoTitleConversation() {
+  if (!currentConvId) return;
+  const conv = allConversations.find(c => c.id === currentConvId);
+  if (!conv || conv.title !== 'Nouvelle conversation') return;
+  const firstUser = uiMessages.find(m => m.role === 'user');
+  if (firstUser) {
+    let title = firstUser.content.slice(0, 50).replace(/\n/g, ' ').trim();
+    if (firstUser.content.length > 50) title += '…';
+    conv.title = title || 'Conversation';
+    topTitle.textContent = conv.title;
+    saveAllConversations();
+    renderConversationList();
+  }
+}
+
+/* ============================================================
+   CONVERSATION LIST
+   ============================================================ */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function formatRelativeDate(ts) {
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff / 60000);
+  const hr = Math.floor(diff / 3600000);
+  const day = Math.floor(diff / 86400000);
+  if (min < 1) return "À l'instant";
+  if (min < 60) return `Il y a ${min} min`;
+  if (hr < 24) return `Il y a ${hr} h`;
+  if (day < 7) return `Il y a ${day} j`;
+  return new Date(ts).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+}
+
+function renderConversationList() {
+  convListEl.innerHTML = '';
+  if (allConversations.length === 0) {
+    convListEl.innerHTML = '<div style="padding:20px 12px;text-align:center;font-size:12px;color:var(--fg-muted);">Aucune conversation</div>';
+    return;
+  }
+  allConversations.forEach(conv => {
+    const item = document.createElement('div');
+    item.className = 'conv-item' + (conv.id === currentConvId ? ' active' : '');
+    item.innerHTML = `
+      <div class="conv-info">
+        <div class="conv-title">${escapeHtml(conv.title)}</div>
+        <div class="conv-date">${formatRelativeDate(conv.updatedAt)}</div>
+      </div>
+      <div class="conv-actions">
+        <button class="danger delete" title="Supprimer">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+        </button>
+      </div>`;
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('.conv-actions')) return;
+      if (conv.id === currentConvId) return;
+      saveCurrentConversation();
+      loadConversation(conv.id);
+    });
+    item.querySelector('.delete').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!confirm(`Supprimer "${conv.title}" ?`)) return;
+      const idx = allConversations.findIndex(c => c.id === conv.id);
+      if (idx >= 0) allConversations.splice(idx, 1);
+      saveAllConversations();
+      if (currentConvId === conv.id) {
+        if (allConversations.length) loadConversation(allConversations[0].id);
+        else startNewChat();
+      } else renderConversationList();
+    });
+    convListEl.appendChild(item);
+  });
+}
+
+/* ============================================================
+   API KEYS
+   ============================================================ */
+function setCookie(n, v, d) {
+  const dt = new Date();
+  dt.setTime(dt.getTime() + d * 24 * 60 * 60 * 1000);
+  document.cookie = `${n}=${encodeURIComponent(v)}; expires=${dt.toUTCString()}; path=/; SameSite=Strict`;
+}
+
+function getCookie(n) {
+  const m = document.cookie.match(new RegExp('(?:^|; )' + n + '=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+function getApiKeys() {
+  const raw = getCookie(API_STORAGE_COOKIE);
+  if (!raw) return [];
+  try {
+    const data = JSON.parse(raw);
+    return Array.isArray(data) ? data.filter(k => k && k.trim()) : [];
+  } catch {
+    return raw.split('\n').map(k => k.trim()).filter(Boolean);
+  }
+}
+
+function saveApiKeysList(keys) {
+  const clean = keys.map(k => k.trim()).filter(Boolean);
+  setCookie(API_STORAGE_COOKIE, JSON.stringify(clean), 30);
+  updateApiBtn();
+}
+
+function updateApiBtn() {
+  const keys = getApiKeys();
+  if (keys.length > 0) {
+    apiBtn.classList.add('configured');
+    apiBtn.innerHTML = `🔑 <span class="key-count">${keys.length}</span>`;
+  } else {
+    apiBtn.classList.remove('configured');
+    apiBtn.innerHTML = '🔑 Clés API';
+  }
+}
+
+function openApiModal() {
+  const keys = getApiKeys();
+  apiKeysInput.value = keys.join('\n');
+  updateKeyCount();
+  apiModalOverlay.classList.add('show');
+  setTimeout(() => apiKeysInput.focus(), 100);
+}
+
+function closeApiModal() {
+  apiModalOverlay.classList.remove('show');
+}
+
+function updateKeyCount() {
+  const keys = apiKeysInput.value.split('\n').map(k => k.trim()).filter(Boolean);
+  keyCountEl.textContent = `${keys.length} clé${keys.length > 1 ? 's' : ''}`;
+  keyCountEl.className = 'count' + (keys.length > 0 ? ' has-keys' : '');
+}
+
+function getNextKey() {
+  const keys = getApiKeys();
+  if (keys.length === 0) return null;
+  const available = keys.filter(k => !failedKeys.has(k));
+  if (available.length === 0) {
+    failedKeys.clear();
+    return keys[0];
+  }
+  const key = available[currentKeyIndex % available.length];
+  currentKeyIndex++;
+  return key;
+}
+
+function markKeyFailed(key) {
+  failedKeys.add(key);
+  console.warn('Clé échouée:', key.slice(0, 12) + '...');
+}
+
+/* ============================================================
+   MESSAGES UI
+   ============================================================ */
+let msgIdCounter = 0;
+
+function addMessageToUI(role, content, animate = true) {
+  const id = ++msgIdCounter;
+  const row = document.createElement('div');
+  row.className = `msg-row ${role}`;
+  row.dataset.msgId = id;
+
+  if (role === 'user' || role === 'assistant') {
+    const avatar = document.createElement('div');
+    avatar.className = `avatar ${role}`;
+    avatar.textContent = role === 'user' ? 'U' : 'H';
+    row.appendChild(avatar);
+  }
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = content;
+  row.appendChild(bubble);
+
+  messagesEl.appendChild(row);
+
+  const msg = { id, role, content, el: row, bubble };
+  uiMessages.push(msg);
+
+  if (role === 'assistant' && content) {
+    renderDownloadCardsFromContent(content, row, bubble);
+  }
+
+  scrollToBottom();
+  return msg;
+}
+
+function scrollToBottom() {
+  requestAnimationFrame(() => {
+    scrollEl.scrollTop = scrollEl.scrollHeight;
+  });
+}
+
+/* ============================================================
+   DOWNLOAD CARDS
+   ============================================================ */
+function renderDownloadCardsFromContent(content, row, bubble) {
+  const blocks = parseDownloadBlocks(content);
+  if (blocks.length === 0) return;
+
+  let cleanText = content;
+  blocks.forEach(b => { cleanText = cleanText.replace(b.raw, ''); });
+  bubble.textContent = cleanText.trim();
+
+  blocks.forEach(block => {
+    row.appendChild(createDownloadCard(block));
+  });
+}
+
+function parseDownloadBlocks(text) {
+  const blocks = [];
+  const regex = /\[(WORD|EXCEL|PPT|CSV|MD|PDF):([^\]]+)\]([\s\S]*?)\[\/\1\]/g;
+  let m;
+  while ((m = regex.exec(text)) !== null) {
+    blocks.push({
+      type: m[1].toLowerCase(),
+      filename: m[2].trim(),
+      content: m[3].trim(),
+      raw: m[0]
+    });
+  }
+  return blocks;
+}
+
+function createDownloadCard(block) {
+  const card = document.createElement('div');
+  card.className = 'download-card';
+
+  const icons = {
+    word: { label: 'DOCX', cls: 'word' },
+    excel: { label: 'XLSX', cls: 'excel' },
+    ppt: { label: 'PPTX', cls: 'ppt' },
+    csv: { label: 'CSV', cls: 'csv' },
+    md: { label: 'MD', cls: 'md' },
+    pdf: { label: 'PDF', cls: 'pdf' }
+  };
+  const ic = icons[block.type] || icons.md;
+  const ext = { word: 'docx', excel: 'xlsx', ppt: 'pptx', csv: 'csv', md: 'md', pdf: 'pdf' }[block.type] || 'txt';
+  let filename = block.filename.replace(/\.[^.]+$/, '').replace(/[\/\\:*?"<>|]/g, '_');
+  const sizeEstimate = new Blob([block.content]).size;
+  const sizeStr = sizeEstimate < 1024 ? `${sizeEstimate} B` : `${(sizeEstimate/1024).toFixed(1)} KB`;
+
+  card.innerHTML = `
+    <div class="file-icon ${ic.cls}">${ic.label}</div>
+    <div class="file-info">
+      <div class="file-name">${escapeHtml(filename)}.${ext}</div>
+      <div class="file-meta">${ic.label} · ${sizeStr}</div>
+    </div>
+    <button class="download-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Télécharger
+    </button>`;
+
+  card.querySelector('.download-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    downloadBlock(block, filename);
+  });
+
+  return card;
+}
+
+async function downloadBlock(block, filename) {
+  try {
+    switch (block.type) {
+      case 'word': await downloadWord(block.content, filename); break;
+      case 'excel': await downloadExcel(block.content, filename); break;
+      case 'ppt': await downloadPPT(block.content, filename); break;
+      case 'csv': downloadCSV(block.content, filename); break;
+      case 'md': downloadMD(block.content, filename); break;
+      case 'pdf': await downloadPDF(block.content, filename); break;
+    }
+    showToast('✅ Fichier téléchargé');
+  } catch (err) {
+    showToast(`⚠ ${err.message}`);
+  }
+}
+
+/* ============================================================
+   GÉNÉRATION DE FICHIERS
+   ============================================================ */
+async function downloadWord(content, filename) {
+  if (typeof docx === 'undefined') throw new Error('docx non chargé');
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel } = docx;
+  const children = [];
+  content.split('\n').forEach(line => {
+    const t = line.trim();
+    if (!t) { children.push(new Paragraph({ children: [] })); return; }
+    if (t.startsWith('### ')) children.push(new Paragraph({ text: t.slice(4), heading: HeadingLevel.HEADING_3 }));
+    else if (t.startsWith('## ')) children.push(new Paragraph({ text: t.slice(3), heading: HeadingLevel.HEADING_2 }));
+    else if (t.startsWith('# ')) children.push(new Paragraph({ text: t.slice(2), heading: HeadingLevel.HEADING_1 }));
+    else if (t.startsWith('- ') || t.startsWith('* ')) children.push(new Paragraph({ text: t.slice(2), bullet: { level: 0 } }));
+    else children.push(new Paragraph({ children: [new TextRun(t)] }));
+  });
+  const doc = new Document({ sections: [{ children }] });
+  saveBlob(await Packer.toBlob(doc), filename + '.docx');
+}
+
+async function downloadExcel(content, filename) {
+  if (typeof XLSX === 'undefined') throw new Error('XLSX non chargé');
+  const wb = XLSX.utils.book_new();
+  const blocks = [];
+  let currentName = null, currentLines = [];
+
+  content.split('\n').forEach(line => {
+    const m = line.match(/^([A-Za-zÀ-ÿ][\w\sÀ-ÿ\-]*):\s*$/);
+    if (m) {
+      if (currentName && currentLines.length) blocks.push({ name: currentName, lines: currentLines });
+      currentName = m[1].trim();
+      currentLines = [];
+    } else if (currentName && line.trim()) {
+      currentLines.push(line);
+    }
+  });
+  if (currentName && currentLines.length) blocks.push({ name: currentName, lines: currentLines });
+
+  if (blocks.length === 0) {
+    const rows = content.split('\n').filter(l => l.trim()).map(l => l.split(','));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Sheet1');
+  } else {
+    blocks.forEach(b => {
+      const sep = b.lines[0].includes(';') ? ';' : ',';
+      const rows = b.lines.map(l => l.split(sep).map(c => c.trim()));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), b.name.replace(/[\/\\:*?"<>|]/g, '_').slice(0, 31));
+    });
+  }
+
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  saveBlob(new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), filename + '.xlsx');
+}
+
+async function downloadPPT(content, filename) {
+  if (typeof PptxGenJS === 'undefined') throw new Error('pptxgenjs non chargé');
+  const pptx = new PptxGenJS();
+  pptx.layout = 'LAYOUT_16x9';
+
+  const slides = [];
+  let current = null;
+  content.split('\n').forEach(line => {
+    const m = line.match(/^Slide\s*\d+\s*:\s*(.+)$/i);
+    if (m) {
+      if (current) slides.push(current);
+      current = { title: m[1].trim(), lines: [] };
+    } else if (current && line.trim()) {
+      current.lines.push(line.trim());
+    }
+  });
+  if (current) slides.push(current);
+  if (slides.length === 0) slides.push({ title: filename, lines: content.split('\n').filter(l => l.trim()) });
+
+  slides.forEach(s => {
+    const slide = pptx.addSlide();
+    slide.addText(s.title, { x: 0.5, y: 0.3, w: '90%', h: 0.8, fontSize: 28, bold: true, color: '1F1E1C' });
+    let yPos = 1.4;
+    s.lines.forEach(line => {
+      const clean = line.replace(/^[-•*]\s*/, '');
+      const isBullet = /^[-•*]/.test(line);
+      slide.addText(clean, { x: 0.7, y: yPos, w: '85%', h: 0.5, fontSize: 16, color: '2E2D2B', bullet: isBullet });
+      yPos += 0.5;
+    });
+  });
+
+  await pptx.writeFile({ fileName: filename + '.pptx' });
+}
+
+async function downloadPDF(content, filename) {
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(filename)}</title><style>body{font-family:Arial,sans-serif;padding:40px;line-height:1.6;color:#1f1e1c;}</style></head><body><pre style="white-space:pre-wrap;font-family:Arial;">${escapeHtml(content)}</pre><script>window.onload=()=>{setTimeout(()=>window.print(),300);}<\/script></body></html>`);
+  w.document.close();
+}
+
+function downloadCSV(content, filename) {
+  saveBlob(new Blob(['\ufeff' + content], { type: 'text/csv;charset=utf-8' }), filename + '.csv');
+}
+
+function downloadMD(content, filename) {
+  saveBlob(new Blob([content], { type: 'text/markdown;charset=utf-8' }), filename + '.md');
+}
+
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ============================================================
+   FICHIERS UPLOAD
+   ============================================================ */
+function getExt(name) { return name.split('.').pop().toLowerCase(); }
+
+function fileIconLabel(ext) {
+  const m = { xlsx:'XLS', xls:'XLS', csv:'CSV', docx:'DOC', doc:'DOC', pptx:'PPT',
+              ppt:'PPT', pdf:'PDF', png:'IMG', jpg:'IMG', jpeg:'IMG', webp:'IMG',
+              gif:'IMG', txt:'TXT', md:'MD', json:'{}', db:'DB', sqlite:'DB',
+              sqlite3:'DB', sql:'SQL' };
+  return m[ext] || '?';
+}
+
+function renderChips() {
+  fileChips.innerHTML = '';
+  files.forEach(f => {
+    const chip = document.createElement('div');
+    chip.className = 'file-chip';
+    chip.innerHTML = `
+      <div class="ficon">${fileIconLabel(f.ext)}</div>
+      <span class="fname" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+      <span class="remove" title="Retirer">✕</span>`;
+    chip.querySelector('.remove').addEventListener('click', () => {
+      const i = files.indexOf(f);
+      if (i >= 0) files.splice(i, 1);
+      renderChips();
+    });
+    fileChips.appendChild(chip);
+  });
+}
+
+async function handleFiles(list) {
+  for (const file of list) {
+    const ext = getExt(file.name);
+    const entry = { file, name: file.name, ext, size: file.size, status: 'pending', text: '' };
+    files.push(entry);
+    renderChips();
+    await parseFile(entry);
+  }
+}
+
+async function parseFile(entry) {
+  try {
+    const ext = entry.ext;
+    if (['txt','md','json'].includes(ext)) {
+      entry.text = await entry.file.text();
+    } else if (ext === 'csv') {
+      const txt = await entry.file.text();
+      entry.text = `[CSV]\n${txt.slice(0, MAX_FILE_TEXT)}`;
+    } else if (['xlsx','xls'].includes(ext)) {
+      if (typeof XLSX === 'undefined') throw new Error('XLSX non chargé');
+      const wb = XLSX.read(await entry.file.arrayBuffer(), { type: 'array' });
+      let out = '';
+      for (const sn of wb.SheetNames) {
+        const csv = XLSX.utils.sheet_to_csv(wb.Sheets[sn]);
+        out += `\n=== ${sn} ===\n${csv}\n`;
+      }
+      entry.text = out.slice(0, MAX_FILE_TEXT);
+    } else if (['docx','doc'].includes(ext)) {
+      if (typeof mammoth === 'undefined') throw new Error('mammoth non chargé');
+      const r = await mammoth.extractRawText({ arrayBuffer: await entry.file.arrayBuffer() });
+      entry.text = `[Word]\n${r.value}`.slice(0, MAX_FILE_TEXT);
+    } else if (['pptx','ppt'].includes(ext)) {
+      if (typeof JSZip === 'undefined') throw new Error('JSZip non chargé');
+      const zip = await JSZip.loadAsync(await entry.file.arrayBuffer());
+      let out = '';
+      const slides = Object.keys(zip.files).filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f))
+        .sort((a,b) => parseInt(a.match(/slide(\d+)/)[1]) - parseInt(b.match(/slide(\d+)/)[1]));
+      for (let i = 0; i < slides.length; i++) {
+        const xml = await zip.file(slides[i]).async('string');
+        out += `\n=== SLIDE ${i+1} ===\n${[...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map(m => m[1]).join(' ')}\n`;
+      }
+      entry.text = `[PowerPoint]\n${out}`.slice(0, MAX_FILE_TEXT);
+    } else if (ext === 'pdf') {
+      if (typeof pdfjsLib === 'undefined') throw new Error('pdf.js non chargé');
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+      const pdf = await pdfjsLib.getDocument({ data: await entry.file.arrayBuffer() }).promise;
+      let out = `[PDF: ${pdf.numPages} pages]\n`;
+      const max = Math.min(pdf.numPages, 30);
+      for (let i = 1; i <= max; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        out += `\n--- Page ${i} ---\n${content.items.map(it => it.str).join(' ')}\n`;
+      }
+      entry.text = out.slice(0, MAX_FILE_TEXT);
+    } else if (['db','sqlite','sqlite3'].includes(ext)) {
+      entry.text = `[SQLite: ${entry.name}]`;
+    } else if (ext === 'sql') {
+      entry.text = `[SQL dump]\n${(await entry.file.text()).slice(0, MAX_FILE_TEXT)}`;
+    } else if (['png','jpg','jpeg','webp','gif'].includes(ext)) {
+      entry.text = `[Image: ${entry.name}]`;
+    } else {
+      entry.text = `[Non supporté: .${ext}]`;
+    }
+    entry.status = 'ready';
+  } catch (err) {
+    entry.status = 'error';
+    entry.text = '';
+    addMessageToUI('error', `⚠ Erreur ${entry.name}: ${err.message}`);
+  }
+}
+
+/* ============================================================
+   UPLOAD EVENTS
+   ============================================================ */
+attachBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => {
+  if (e.target.files.length) handleFiles(e.target.files);
+  fileInput.value = '';
+});
+
+document.addEventListener('dragenter', (e) => {
+  e.preventDefault();
+  dragCounter++;
+  if (e.dataTransfer.types.includes('Files')) dragOverlay.classList.add('show');
+});
+document.addEventListener('dragleave', (e) => {
+  e.preventDefault();
+  dragCounter--;
+  if (dragCounter === 0) dragOverlay.classList.remove('show');
+});
+document.addEventListener('dragover', (e) => e.preventDefault());
+document.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dragCounter = 0;
+  dragOverlay.classList.remove('show');
+  if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+});
+
+/* ============================================================
+   CHAT API
+   ============================================================ */
+async function callChatStreaming(history, apiKey, onChunk, retryCount = 0) {
+  if (currentStreamAbort) currentStreamAbort.abort();
+  const controller = new AbortController();
+  currentStreamAbort = controller;
+
+  try {
+    const res = await fetch(`${API_BASE}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: MODEL_TEXT, messages: history, stream: true }),
+      signal: controller.signal
+    });
+
+    if (!res.ok) {
+      markKeyFailed(apiKey);
+      if ([401, 402, 403, 429, 500, 502, 503].includes(res.status) && retryCount < 5) {
+        const next = getNextKey();
+        if (next && next !== apiKey) {
+          showToast(`🔄 Rotation clé (${res.status})`);
+          await new Promise(r => setTimeout(r, 500));
+          return callChatStreaming(history, next, onChunk, retryCount + 1);
+        }
+      }
+      throw new Error(`HTTP ${res.status}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '', buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t || !t.startsWith('data:')) continue;
+        const d = t.slice(5).trim();
+        if (d === '[DONE]') continue;
+        try {
+          const json = JSON.parse(d);
+          const delta = json.choices?.[0]?.delta?.content || '';
+          if (delta) { fullText += delta; onChunk(fullText); }
+        } catch {}
+      }
+    }
+
+    currentStreamAbort = null;
+    return fullText;
+  } catch (err) {
+    if (err.name === 'AbortError') throw err;
+    if (retryCount < 5) {
+      markKeyFailed(apiKey);
+      const next = getNextKey();
+      if (next && next !== apiKey) {
+        showToast(`🔄 Rotation clé → tentative ${retryCount + 1}`);
+        await new Promise(r => setTimeout(r, 500));
+        return callChatStreaming(history, next, onChunk, retryCount + 1);
+      }
+    }
+    throw err;
+  }
+}
+
+/* ============================================================
+   PIPELINE
+   ============================================================ */
+function buildDataContext() {
+  const ready = files.filter(f => f.status === 'ready' && f.text);
+  if (!ready.length) return '';
+  return ready.map(f => `### FICHIER: ${f.name}\n${f.text}`).join('\n\n');
+}
+
+const SYSTEM_PROMPT = `Tu es HAL, un assistant expert.
+
+INSTRUCTIONS:
+1. Réponds en français, structuré.
+2. Si l'utilisateur demande un document, ajoute un bloc à la fin :
+
+[WORD:nom-fichier]
+# Titre
+## Section
+Contenu
+- point
+[/WORD]
+
+[EXCEL:nom-fichier]
+Sheet1:
+col1,col2,col3
+v1,v2,v3
+[/EXCEL]
+
+[PPT:nom-presentation]
+Slide 1: Titre
+- Point A
+Slide 2: Titre
+- Point B
+[/PPT]
+
+[CSV:nom-fichier]
+col1,col2
+a,b
+[/CSV]
+
+[MD:nom-fichier]
+# Titre
+Contenu
+[/MD]
+
+[PDF:nom-fichier]
+Contenu
+[/PDF]
+
+Un seul bloc par type par réponse.`;
+
+async function sendQuestion() {
+  if (busy) return;
+  const question = questionEl.value.trim();
+  if (!question && !files.length) return;
+
+  const chatKey = getNextKey();
+  if (!chatKey) {
+    addMessageToUI('error', '⚠ Configurez au moins une clé API (bouton 🔑).');
+    openApiModal();
+    return;
+  }
+
+  if (!currentConvId) {
+    const conv = createNewConversation();
+    currentConvId = conv.id;
+    renderConversationList();
+  }
+
+  busy = true;
+  sendBtn.disabled = true;
+  questionEl.value = '';
+  autoResize();
+
+  addMessageToUI('user', question || '(analyse des fichiers)');
+  autoTitleConversation();
+
+  try {
+    const dataContext = buildDataContext();
+    let userContent = question || 'Analyse ces fichiers.';
+    if (dataContext) userContent += `\n\n=== DONNÉES ===\n${dataContext.slice(0, MAX_FILE_TEXT * 2)}`;
+
+    conversationHistory.push({ role: 'user', content: userContent });
+
+    const assistantMsg = addMessageToUI('assistant', '');
+    const cursor = document.createElement('span');
+    cursor.className = 'streaming-cursor';
+    assistantMsg.bubble.appendChild(cursor);
+
+    const fullAnswer = await callChatStreaming(
+      [{ role: 'system', content: SYSTEM_PROMPT }, ...conversationHistory.slice(-4)],
+      chatKey,
+      (partial) => {
+        assistantMsg.bubble.textContent = partial;
+        assistantMsg.bubble.appendChild(cursor);
+        scrollToBottom();
+      }
+    );
+
+    cursor.remove();
+    assistantMsg.bubble.textContent = fullAnswer;
+    assistantMsg.content = fullAnswer;
+    renderDownloadCardsFromContent(fullAnswer, assistantMsg.el, assistantMsg.bubble);
+
+    conversationHistory.push({ role: 'assistant', content: fullAnswer });
+    saveCurrentConversation();
+
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      addMessageToUI('error', `Erreur : ${err.message}`);
+    }
+  } finally {
+    busy = false;
+    sendBtn.disabled = false;
+    questionEl.focus();
+    saveCurrentConversation();
+    renderConversationList();
+  }
+}
+
+/* ============================================================
+   AUTO-RESIZE + EVENTS
+   ============================================================ */
+function autoResize() {
+  questionEl.style.height = 'auto';
+  questionEl.style.height = Math.min(questionEl.scrollHeight, 240) + 'px';
+}
+
+questionEl.addEventListener('input', autoResize);
+questionEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendQuestion();
+  }
+});
+sendBtn.addEventListener('click', sendQuestion);
+
+/* ============================================================
+   MODAL API EVENTS
+   ============================================================ */
+apiBtn.addEventListener('click', openApiModal);
+apiModalClose.addEventListener('click', closeApiModal);
+apiCancel.addEventListener('click', closeApiModal);
+apiModalOverlay.addEventListener('click', (e) => {
+  if (e.target === apiModalOverlay) closeApiModal();
+});
+apiKeysInput.addEventListener('input', updateKeyCount);
+
+apiSave.addEventListener('click', () => {
+  const keys = apiKeysInput.value.split('\n').map(k => k.trim()).filter(Boolean);
+  saveApiKeysList(keys);
+  failedKeys.clear();
+  currentKeyIndex = 0;
+  closeApiModal();
+  showToast(`✅ ${keys.length} clé${keys.length > 1 ? 's' : ''} enregistrée${keys.length > 1 ? 's' : ''}`);
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && apiModalOverlay.classList.contains('show')) closeApiModal();
+});
+
+/* ============================================================
+   START / INIT
+   ============================================================ */
+function startNewChat() {
+  const conv = createNewConversation();
+  currentConvId = conv.id;
+  conversationHistory = [];
+  uiMessages = [];
+  files.length = 0;
+  messagesEl.innerHTML = '';
+  fileChips.innerHTML = '';
+  topTitle.textContent = conv.title;
+  renderConversationList();
+  questionEl.value = '';
+  autoResize();
+  questionEl.focus();
+}
+
+newChatBtn.addEventListener('click', () => {
+  saveCurrentConversation();
+  startNewChat();
+});
+
+clearAllBtn.addEventListener('click', () => {
+  if (!confirm('Effacer TOUTES les conversations ?')) return;
+  allConversations = [];
+  saveAllConversations();
+  startNewChat();
+  showToast('🗑 Tout effacé');
+});
+
+// INIT
+loadAllConversations();
+updateApiBtn();
+
+requestAnimationFrame(() => {
+  if (allConversations.length > 0) {
+    loadConversation(allConversations[0].id);
+  } else {
+    startNewChat();
+    addMessageToUI('assistant', 'Bonjour, je suis HAL. Je peux analyser vos fichiers et générer des documents téléchargeables (Word, Excel, PowerPoint, PDF, CSV, Markdown).\n\n1. Cliquez sur 🔑 en haut à droite pour ajouter vos clés API (une par ligne)\n2. Joignez des fichiers via le trombone 📎\n3. Demandez un rapport, une analyse, ou une présentation\n\nEssayez : "Analyse ce fichier et génère un rapport Word"');
+  }
+  autoResize();
+  if (getApiKeys().length === 0) {
+    setTimeout(() => openApiModal(), 600);
+  }
+});
+</script>
+</body>
+</html>
